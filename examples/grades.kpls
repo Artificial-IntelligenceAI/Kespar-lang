@@ -1,0 +1,18 @@
+func.str.utf8 grade [var.uint8 'score'] {
+    if ['score' >== 90] { return ["A"]; }
+    else.if ['score' >== 75] { return ["B"]; }
+    else { return ["keep going"]; }
+}
+
+MAIN {
+    var.list.uint8 'scores' = [std::read.stdin[1, 20, 0, 100]];
+    var 'total' := [0];
+    var 'best' := [0];
+    loop.for 's' in ['scores'] {
+        'total' = ['total' + std::to.uint16['s']];
+        if ['s' > 'best'] { 'best' = ['s']; }
+        std::printu.stdout['s' " → " [grade['s']] \n];
+    }
+    var 'average' := ['total' / std::len['scores']];
+    std::printu.stdout["average " 'average' ", best " 'best' " (" [grade['best']] ")" \n];
+}
