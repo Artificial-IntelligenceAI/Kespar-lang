@@ -1,0 +1,17 @@
+// A programmer's guardrail, verified by `check`; and one that isn't enough.
+MAIN {
+    var.int32 'n' = [std::read.stdin[]];
+    var.list.int32 'xs' = [std::fill[0, 10]];
+    if ['n' >== 0 and 'n' < 10] {
+        check {
+            'xs'['n'] = [1];                 // proven by the guard: no check emitted
+        }
+    }
+    var.int16 'k' = [std::read.stdin[0, 30000]];
+    var.int16 'm' = ['k' + 2000];            // proven: at most 32000
+    if ['n' > 100] {
+        var.int16 'p' = [std::to.int16['n']];   // checked: n could be 100000
+        std::printu.stdout['p' \n];
+    }
+    std::printu.stdout['xs' " " 'm' \n];
+}

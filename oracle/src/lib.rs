@@ -65,7 +65,7 @@ pub fn types_listing(src: &str) -> Result<Vec<String>, CompileError> {
 }
 
 /// Run a program on the given input.
-pub fn run(src: &str, input: &[u8], opts: &Options) -> Outcome {
+pub fn run(src: &str, input: &mut dyn std::io::BufRead, opts: &Options) -> Outcome {
     let checked = match compile(src) {
         Ok(c) => c,
         Err(e) => {

@@ -4,6 +4,7 @@
 
 pub mod domain;
 pub mod interp;
+pub mod smt;
 
 use std::collections::HashMap;
 
@@ -153,6 +154,26 @@ fn bounded_run(prog: &Program) -> Result<Report> {
         wdec.push(Some(w));
     }
 
+    // Layer 3 for whatever layer 2 left unproven.
+    let mut z3_answers: HashMap<SiteId, smt::Answer> = HashMap::new();
+    let mut z3_queries = 0;
+    {
+        let unproven: Vec<SiteId> = prog.sites.iter().filter(|s| {
+            let st = &an.sites[s.id as usize];
+            s.active && s.tier != Tier::Nocheck && s.free.is_none() && (an.incomplete[s.func as usize] || (st.reached && !st.proven))
+        }).map(|s| s.id).collect();
+        if !unproven.is_empty() {
+            let ctx = smt::make_context();
+            let mut enc = smt::Smt::new(&ctx, prog, &wdec);
+            enc.encode();
+            for id in unproven {
+                let a = enc.ask(id);
+                z3_answers.insert(id, a);
+            }
+            z3_queries = enc.queries;
+        }
+    }
+
     // Sites.
     let mut site_checked = vec![false; prog.sites.len()];
     let mut sites = Vec::new();
@@ -174,10 +195,29 @@ fn bounded_run(prog: &Program) -> Result<Report> {
             if st.certain {
                 note.push_str("; always fails when reached");
             }
-            if s.tier == Tier::Check {
-                check_errors.push(CompileError::new(s.line, format!("`check` could not prove no {} in `{}` ({})", s.kind.text(), s.what, note)));
+            match z3_answers.get(&s.id) {
+                Some(smt::Answer::Proven) => (Verdict::Proven, format!("layer 3: no input reaches it ({})", st.note)),
+                Some(smt::Answer::Fails(cx)) => {
+                    let note = format!("layer 3: fails for {cx}");
+                    if s.tier == Tier::Check {
+                        check_errors.push(CompileError::new(s.line, format!("`check` cannot remove the {} check in `{}`: it fails for {cx}", s.kind.text(), s.what)));
+                    }
+                    (Verdict::Checked, note)
+                }
+                Some(smt::Answer::Unknown(why)) => {
+                    note = format!("{note}; layer 3: {why}");
+                    if s.tier == Tier::Check {
+                        check_errors.push(CompileError::new(s.line, format!("`check` could not prove no {} in `{}` ({note}); add a bound at the read it depends on", s.kind.text(), s.what)));
+                    }
+                    (Verdict::Checked, note)
+                }
+                None => {
+                    if s.tier == Tier::Check {
+                        check_errors.push(CompileError::new(s.line, format!("`check` could not prove no {} in `{}` ({note})", s.kind.text(), s.what)));
+                    }
+                    (Verdict::Checked, note)
+                }
             }
-            (Verdict::Checked, note)
         };
         site_checked[s.id as usize] = verdict == Verdict::Checked;
         sites.push(SiteReport { id: s.id, line: s.line, func: prog.funcs[s.func as usize].name.clone(), what: s.what.clone(), kind: s.kind.text(), verdict, note });
@@ -209,7 +249,7 @@ fn bounded_run(prog: &Program) -> Result<Report> {
     fix_bin_widths(prog, &mut known);
 
     let decisions = Decisions { site_checked, widths: wdec, track_frees: false, known, whole: None };
-    Ok(Report { decisions, sites, widths, whole: false, steps: an.steps })
+    Ok(Report { decisions, sites, widths, whole: false, steps: an.steps + z3_queries as u64 })
 }
 
 fn fix_bin_widths(prog: &Program, known: &mut HashMap<u32, Known>) {

@@ -1,0 +1,9 @@
+MAIN {
+    var.int32 'n' = [std::read.stdin[]];
+    var.list.int32 'xs' = [std::fill[0, 10]];
+    if ['n' >== 0 and 'n' <== 10] {
+        check {
+            'xs'['n'] = [1];                 // the guard is off by one
+        }
+    }
+}

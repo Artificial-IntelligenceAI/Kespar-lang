@@ -198,7 +198,6 @@ struct FuncSig {
     params: Vec<(Ty, bool, String, Option<TypeSpec>)>,
     /// `None`: the function returns nothing.
     ret: Option<Ty>,
-    line: usize,
 }
 
 struct Checker {
@@ -435,7 +434,7 @@ impl Checker {
                 match (bx, by) {
                     (Some((tx, lx)), Some((ty, _))) => {
                         if let Err(e) = self.unify(&tx, &ty, line) {
-                            return Err(self.forcing_error(rx, &tx, lx, &ty, line, e));
+                            return Err(self.forcing_error(*x, rx, &tx, lx, &ty, line, e));
                         }
                     }
                     (Some((tx, _)), None) => self.bind(ry, &tx, line)?,
@@ -468,7 +467,7 @@ impl Checker {
                 match self.vars[rx].bound.clone() {
                     Some((bt, bl)) => {
                         if let Err(e) = self.unify(&bt, t, line) {
-                            return Err(self.forcing_error(rx, &bt, bl, t, line, e));
+                            return Err(self.forcing_error(*x, rx, &bt, bl, t, line, e));
                         }
                     }
                     None => self.bind(rx, t, line)?,
@@ -487,11 +486,12 @@ impl Checker {
     }
 
     /// A named `:=` variable already forced to one type meets another.
-    fn forcing_error(&mut self, r: usize, was: &Ty, was_line: usize, now: &Ty, line: usize, inner: CompileError) -> CompileError {
+    fn forcing_error(&mut self, x: usize, r: usize, was: &Ty, was_line: usize, now: &Ty, line: usize, inner: CompileError) -> CompileError {
         let sw = self.shallow(was);
         let sn = self.shallow(now);
         let same_family = matches!((&sw, &sn), (Ty::Int(_), Ty::Int(_)) | (Ty::Bin(_), Ty::Bin(_)));
-        match (&self.vars[r].name, same_family) {
+        let name = self.vars[x].name.clone().or_else(|| self.vars[r].name.clone());
+        match (&name, same_family) {
             (Some(n), true) => {
                 let n = n.clone();
                 let a = self.render(was);
@@ -651,7 +651,7 @@ impl Checker {
                     }
                 }
             };
-            self.sigs.insert(f.name.clone(), FuncSig { params, ret, line: f.line });
+            self.sigs.insert(f.name.clone(), FuncSig { params, ret });
         }
         Ok(())
     }

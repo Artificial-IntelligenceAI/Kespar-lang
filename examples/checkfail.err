@@ -1,0 +1,1 @@
+error: `check` cannot remove the out of bounds check in `'xs'[…] =`: it fails for 'n'=10 at line 6
