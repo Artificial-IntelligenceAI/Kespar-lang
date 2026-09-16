@@ -41,7 +41,8 @@ the value's **domain**. Precog runs the program abstractly: each expression
 gets the set of values it can take, computed exactly through every
 operation (`{1,2,3} x {10}` is `{10,20,30}`). A set larger than **4096
 values** (**provisional**) becomes an **interval** `[lo, hi]` — still
-sound, less precise. Bins are tracked as intervals from the start (or "any
+sound, less precise; and an interval is only spelled out as a set again
+when it has at most **64** values (**provisional**). Bins are tracked as intervals from the start (or "any
 bin" for an unbounded bin read). Strs carry a length interval; lists a
 length interval and an element domain.
 

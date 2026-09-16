@@ -3,11 +3,15 @@
 //! intervals; everything else is "known" or "unknown with what we know".
 
 use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use crate::ast::{BinOp, IntWidth};
 
 /// Sets larger than this become intervals (provisional).
 pub const SET_CAP: usize = 4096;
+/// A range is spelled out as a set only up to this many values; a computed
+/// set (a product of two sets) may still grow to SET_CAP (provisional).
+pub const MATERIALIZE_CAP: usize = 64;
 
 /// "Unbounded" ends of an interval.
 pub const NEG_INF: i128 = i128::MIN;
@@ -15,8 +19,9 @@ pub const POS_INF: i128 = i128::MAX;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ISet {
-    /// Exact, non-empty, at most SET_CAP values.
-    Set(BTreeSet<i128>),
+    /// Exact, non-empty, at most SET_CAP values. Reference-counted so that
+    /// cloning a state is cheap; a mutation copies only when shared.
+    Set(Rc<BTreeSet<i128>>),
     /// lo <= hi; either end may be infinite.
     Range(i128, i128),
     /// No value at all (unreachable).
@@ -25,14 +30,14 @@ pub enum ISet {
 
 impl ISet {
     pub fn one(v: i128) -> ISet {
-        ISet::Set(BTreeSet::from([v]))
+        ISet::Set(Rc::new(BTreeSet::from([v])))
     }
     pub fn range(lo: i128, hi: i128) -> ISet {
         if lo > hi {
             return ISet::Empty;
         }
-        if lo != NEG_INF && hi != POS_INF && hi.checked_sub(lo).map_or(false, |d| d < SET_CAP as i128) {
-            ISet::Set((lo..=hi).collect())
+        if lo != NEG_INF && hi != POS_INF && hi.checked_sub(lo).map_or(false, |d| d < MATERIALIZE_CAP as i128) {
+            ISet::Set(Rc::new((lo..=hi).collect()))
         } else {
             ISet::Range(lo, hi)
         }
@@ -49,7 +54,7 @@ impl ISet {
         } else if s.len() > SET_CAP {
             ISet::Range(*s.iter().next().unwrap(), *s.iter().next_back().unwrap())
         } else {
-            ISet::Set(s)
+            ISet::Set(Rc::new(s))
         }
     }
     pub fn is_empty(&self) -> bool {
@@ -107,6 +112,26 @@ impl ISet {
             _ => ISet::Range(self.lo().min(o.lo()), self.hi().max(o.hi())),
         }
     }
+    /// `self = self ⊔ o`, extending an exact set in place instead of rebuilding it
+    /// (a loop's exit state is joined once per iteration; rebuilding made that quadratic).
+    pub fn join_into(&mut self, o: &ISet) {
+        match (&mut *self, o) {
+            (_, ISet::Empty) => {}
+            (ISet::Empty, x) => *self = x.clone(),
+            (ISet::Set(a), ISet::Set(b)) => {
+                if Rc::ptr_eq(a, b) {
+                    return;
+                }
+                let a = Rc::make_mut(a);
+                a.extend(b.iter().copied());
+                if a.len() > SET_CAP {
+                    let (lo, hi) = (*a.iter().next().unwrap(), *a.iter().next_back().unwrap());
+                    *self = ISet::Range(lo, hi);
+                }
+            }
+            _ => *self = ISet::Range(self.lo().min(o.lo()), self.hi().max(o.hi())),
+        }
+    }
     /// Keep only values within [lo, hi].
     pub fn clip(&self, lo: i128, hi: i128) -> ISet {
         match self {
@@ -119,7 +144,10 @@ impl ISet {
     pub fn without(&self, v: i128) -> ISet {
         match self {
             ISet::Set(s) => {
-                let mut s = s.clone();
+                if !s.contains(&v) {
+                    return self.clone();
+                }
+                let mut s = (**s).clone();
                 s.remove(&v);
                 ISet::from_set(s)
             }
@@ -163,8 +191,8 @@ impl ISet {
             return None;
         }
         let mut out = BTreeSet::new();
-        for x in a {
-            for y in b {
+        for x in a.iter() {
+            for y in b.iter() {
                 out.insert(f(*x, *y)?);
             }
         }
@@ -452,6 +480,14 @@ impl AVal {
             (AVal::List(a), AVal::List(b)) => AVal::List(AListRef(a.0.union(&b.0).copied().collect())),
             (AVal::Nothing, AVal::Nothing) => AVal::Nothing,
             (a, b) => unreachable!("join of {a:?} and {b:?}"),
+        }
+    }
+    pub fn join_into(&mut self, o: &AVal) {
+        match (&mut *self, o) {
+            (AVal::Int(a), AVal::Int(b)) => a.join_into(b),
+            (AVal::Undef, x) => *self = x.clone(),
+            (_, AVal::Undef) => {}
+            (a, b) => *a = a.join(b),
         }
     }
     pub fn is_empty(&self) -> bool {

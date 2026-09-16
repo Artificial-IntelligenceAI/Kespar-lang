@@ -35,6 +35,21 @@ pub struct State {
 }
 
 impl State {
+    /// In-place join: variables extend their sets rather than rebuilding them.
+    fn join_into(&mut self, o: &State) {
+        for (a, b) in self.vars.iter_mut().zip(o.vars.iter()) {
+            a.join_into(b);
+        }
+        for i in 0..o.heap.len() {
+            if i < self.heap.len() {
+                let j = self.heap[i].join(&o.heap[i]);
+                self.heap[i] = j;
+            } else {
+                self.heap.push(o.heap[i].clone());
+            }
+        }
+    }
+
     fn join(&self, o: &State) -> State {
         let vars = self.vars.iter().zip(o.vars.iter()).map(|(a, b)| a.join(b)).collect();
         let n = self.heap.len().max(o.heap.len());
@@ -53,7 +68,10 @@ impl State {
 fn join_opt(a: Option<State>, b: Option<State>) -> Option<State> {
     match (a, b) {
         (None, x) | (x, None) => x,
-        (Some(a), Some(b)) => Some(a.join(&b)),
+        (Some(mut a), Some(b)) => {
+            a.join_into(&b);
+            Some(a)
+        }
     }
 }
 
@@ -206,8 +224,7 @@ impl<'a> Analysis<'a> {
             return;
         }
         if let (Ty::Int(IntTy::Free(id)), AVal::Int(s)) = (ty, v) {
-            let id = *id as usize;
-            self.frees[id] = self.frees[id].join(s);
+            self.frees[*id as usize].join_into(s);
         }
     }
 
@@ -217,11 +234,12 @@ impl<'a> Analysis<'a> {
         }
         self.note_free(&e.ty, v);
         if !matches!(v, AVal::List(_) | AVal::Nothing | AVal::Undef) && pure(e) {
-            let joined = match self.results.get(&e.id) {
-                Some(old) => old.join(v),
-                None => v.clone(),
-            };
-            self.results.insert(e.id, joined);
+            match self.results.get_mut(&e.id) {
+                Some(old) => old.join_into(v),
+                None => {
+                    self.results.insert(e.id, v.clone());
+                }
+            }
         }
     }
 
@@ -877,10 +895,32 @@ impl<'a> Analysis<'a> {
         }
     }
 
+    /// The set of a simple integer expression read straight off the state:
+    /// names, literals, and arithmetic over them. No clone, nothing recorded.
+    fn quick_int(s: &State, e: &Expr) -> Option<ISet> {
+        match &e.kind {
+            EK::Var(v) => match &s.vars[*v as usize] {
+                AVal::Int(i) => Some(i.clone()),
+                _ => None,
+            },
+            EK::Int(v) if e.ty.is_int() => Some(ISet::one(*v)),
+            EK::Neg(x, _) if e.ty.is_int() => Self::quick_int(s, x).map(|i| i.neg()),
+            EK::Binary(op, a, b, ..) if e.ty.is_int() && matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul) => {
+                let x = Self::quick_int(s, a)?;
+                let y = Self::quick_int(s, b)?;
+                Some(x.binop(*op, &y))
+            }
+            _ => None,
+        }
+    }
+
     /// The set of a pure integer expression without recording anything.
     fn peek_int(&mut self, s: &State, e: &Expr) -> Option<ISet> {
         if !pure(e) {
             return None;
+        }
+        if let Some(q) = Self::quick_int(s, e) {
+            return Some(q);
         }
         let saved_steps = self.steps;
         let mut tmp = s.clone();
