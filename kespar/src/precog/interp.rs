@@ -23,6 +23,10 @@ pub const TOTAL_TRIPS: u64 = 2_000_000;
 pub const WHILE_CAP: u32 = 64;
 /// Nested call depth before a call is cut off and its result taken as anything (provisional).
 pub const CALL_DEPTH: u32 = 8;
+/// Lists longer than this carry one element summary instead of a value per
+/// element: every trip of a loop clones the state, and a 20,000-element exact
+/// list made the sieve's analysis a memory-bandwidth benchmark (provisional).
+pub const EXACT_LIST_CAP: usize = 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
@@ -1020,7 +1024,8 @@ impl<'a> Analysis<'a> {
                     vals.push(v);
                 }
                 let elem = vals.iter().fold(AVal::Undef, |a, b| a.join(b));
-                self.allocate(st, e.id, AList { len: ISet::one(vals.len() as i128), elem, exact: Some(vals), single: true })
+                let exact = if vals.len() <= EXACT_LIST_CAP { Some(vals.clone()) } else { None };
+                self.allocate(st, e.id, AList { len: ISet::one(vals.len() as i128), elem, exact, single: true })
             }
             EK::Neg(x, site) => {
                 let v = self.eval(st, x);
@@ -1134,7 +1139,7 @@ impl<'a> Analysis<'a> {
                 }
                 let len = ns.clip(0, POS_INF);
                 let exact = match len.single() {
-                    Some(k) if k <= SET_CAP as i128 => Some(vec![val.clone(); k as usize]),
+                    Some(k) if k <= EXACT_LIST_CAP as i128 => Some(vec![val.clone(); k as usize]),
                     _ => None,
                 };
                 self.allocate(st, e.id, AList { len, elem: val, exact, single: true })

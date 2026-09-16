@@ -11,7 +11,7 @@ Apple M5, 2026-09-16:
 |---|---|---|---|---|---|
 | sum_squares (n read, 5000 reps) | 0.021 s | 0.004 s | 0.277 s | 0.284 s | 0.12 s |
 | sum_squares_known (n = 1000) | 0.016 s | 0.003 s | 0.282 s | **0.000 s** (folded to its output) | 0.30 s |
-| sieve (30 reps) | 0.013 s | 0.004 s | 0.060 s | 0.060 s | 14.7 s |
+| sieve (30 reps) | 0.013 s | 0.004 s | 0.060 s | 0.060 s | 14.6 s (was 14.7 s before exact lists were capped at 1024 elements) |
 | collatz (300 reps) | 0.027 s | 0.006 s | 0.046 s | 0.046 s | 3.1 s |
 
 What it says: Kespar's stack VM (i128 arithmetic, no register allocation,
