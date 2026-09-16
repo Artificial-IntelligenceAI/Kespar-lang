@@ -119,21 +119,6 @@ impl Types {
         self.entries[r as usize].kind
     }
 
-    fn describe(&mut self, t: &Ty) -> String {
-        match self.resolve(t) {
-            Ty::Var(r) => {
-                let e = &self.entries[r as usize];
-                match e.kind {
-                    Kind::BinLike => "a bin".into(),
-                    Kind::IntLike => "an integer".into(),
-                    Kind::NumLit => "a number".into(),
-                    Kind::Any => format!("the not-yet-known type of {}", e.what),
-                }
-            }
-            t => t.name(),
-        }
-    }
-
     /// Make two types the same, or say why they cannot be.
     pub fn unify(&mut self, a: &Ty, b: &Ty, line: u32) -> Result<()> {
         let a = self.resolve(a);
@@ -154,8 +139,11 @@ impl Types {
                         return Err(CompileError::new(line, format!("{wx} is an integer but {wy} is a bin; nothing converts implicitly (use `std::to`)")));
                     }
                 };
-                // keep the older variable as the root so messages name the declaration
-                let (root, child) = if x < y { (x, y) } else { (y, x) };
+                // A named origin (`'total'`) beats a literal's, so messages and
+                // the width report name the declaration; otherwise the older one.
+                let named = |e: &Entry| e.what.starts_with('\'');
+                let (nx, ny) = (named(&self.entries[x as usize]), named(&self.entries[y as usize]));
+                let (root, child) = if nx != ny { if nx { (x, y) } else { (y, x) } } else if x < y { (x, y) } else { (y, x) };
                 self.entries[child as usize].parent = root;
                 self.entries[root as usize].kind = merged;
                 Ok(())

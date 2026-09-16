@@ -1,6 +1,6 @@
 MAIN {
-    var.int8 'x' = [100];
+    var.int8 'x' = [std::read.stdin[]];
     std::printu.stdout["before" \n];
-    'x' = ['x' + 100];
+    'x' = ['x' + 100];          // checked: x may be up to 127
     std::printu.stdout["after" \n];
 }

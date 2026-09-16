@@ -26,8 +26,8 @@ pub enum Op {
     Pop,
     /// Integer arithmetic at `width`. `overflow`/`zero` name the sites whose
     /// checks are kept; `None` means Precog proved (or the tier trusts) it.
-    IntOp { op: BinOp, width: IntWidth, overflow: Option<SiteId>, second: Option<SiteId>, line: u32 },
-    IntNeg { width: IntWidth, overflow: Option<SiteId>, line: u32 },
+    IntOp { op: BinOp, width: Option<IntWidth>, overflow: Option<SiteId>, second: Option<SiteId>, line: u32 },
+    IntNeg { width: Option<IntWidth>, overflow: Option<SiteId>, line: u32 },
     BinOp { op: BinOp, width: BinWidth },
     BinNeg { width: BinWidth },
     Cmp { op: BinOp, kind: CmpKind },
@@ -60,6 +60,8 @@ pub enum Op {
     BinToBin { width: BinWidth },
     /// Nothing to do (same type), kept so the site count is honest.
     Nop,
+    /// Compile-time runs only: record the top of the stack as a value free name `n` held.
+    Note(u32),
     Halt,
 }
 
@@ -87,4 +89,5 @@ pub struct Module {
     pub main: u32,
     /// Read names by read id, for the contract message.
     pub read_names: Vec<String>,
+    pub nfrees: u32,
 }

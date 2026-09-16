@@ -1,0 +1,6 @@
+MAIN {
+    var.int8 'x' = [100];
+    std::printu.stdout["before" \n];
+    'x' = ['x' + 100];
+    std::printu.stdout["after" \n];
+}

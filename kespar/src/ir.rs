@@ -39,6 +39,8 @@ pub struct Site {
     pub what: String,
     /// False once the finalize pass finds the operation is on bins (no check).
     pub active: bool,
+    /// The operation is typed by a free `:=` name: its width is chosen so this cannot fail.
+    pub free: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

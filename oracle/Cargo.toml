@@ -1,0 +1,15 @@
+[package]
+name = "oracle"
+version = "0.1.0"
+edition = "2021"
+description = "Reference interpreter for Kespar, written from design/language.md alone"
+
+[lib]
+name = "oracle"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oracle"
+path = "src/main.rs"
+
+[dependencies]

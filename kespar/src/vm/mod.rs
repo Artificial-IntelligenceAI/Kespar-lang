@@ -81,18 +81,22 @@ pub struct Vm<'a> {
     pub steps: u64,
     /// Which sites fired (for the oracle's trace).
     pub fired: Vec<(SiteId, u32)>,
+    /// Compile-time runs: the range each free name held (from `Note`).
+    pub free_ranges: Vec<Option<(i128, i128)>>,
 }
 
 pub struct RunResult {
     pub outcome: Outcome,
     pub stdout: Vec<u8>,
     pub steps: u64,
+    pub fired: Vec<(SiteId, u32)>,
+    pub free_ranges: Vec<Option<(i128, i128)>>,
 }
 
 pub fn run(module: &Module, input: Box<dyn BufRead + '_>, budget: Option<u64>) -> RunResult {
-    let mut vm = Vm { module, stack: Vec::new(), locals: Vec::new(), frames: Vec::new(), heap: Vec::new(), free: Vec::new(), gc_threshold: 1 << 16, out: Vec::new(), input, budget, steps: 0, fired: Vec::new() };
+    let mut vm = Vm { module, stack: Vec::new(), locals: Vec::new(), frames: Vec::new(), heap: Vec::new(), free: Vec::new(), gc_threshold: 1 << 16, out: Vec::new(), input, budget, steps: 0, fired: Vec::new(), free_ranges: vec![None; module.nfrees as usize] };
     let outcome = vm.run_main();
-    RunResult { outcome, stdout: vm.out, steps: vm.steps }
+    RunResult { outcome, stdout: vm.out, steps: vm.steps, fired: vm.fired, free_ranges: vm.free_ranges }
 }
 
 /// Run and write stdout/stderr like a real program would; returns the exit code.
@@ -214,6 +218,18 @@ impl<'a> Vm<'a> {
         }
     }
 
+    /// Fit `r` to `width`: trap if the check is kept, wrap if not, keep as is if unbounded.
+    fn fit(&mut self, width: Option<IntWidth>, r: i128, overflow: Option<SiteId>, line: u32) -> Result<i128, Outcome> {
+        let Some(w) = width else { return Ok(r) };
+        if w.holds(r) {
+            Ok(r)
+        } else if overflow.is_some() {
+            Err(self.trap(SiteKind::Overflow, line, overflow))
+        } else {
+            Ok(w.wrap(r))
+        }
+    }
+
     fn trap(&mut self, kind: SiteKind, line: u32, site: Option<SiteId>) -> Outcome {
         if let Some(s) = site {
             self.fired.push((s, line));
@@ -280,15 +296,15 @@ impl<'a> Vm<'a> {
                 let b = self.pop_int();
                 let a = self.pop_int();
                 let r = match op {
-                    BinOp::Add => a + b,
-                    BinOp::Sub => a - b,
+                    BinOp::Add => a.checked_add(b).ok_or_else(|| Outcome::Trap { kind: SiteKind::Overflow, line, site: overflow })?,
+                    BinOp::Sub => a.checked_sub(b).ok_or_else(|| Outcome::Trap { kind: SiteKind::Overflow, line, site: overflow })?,
                     BinOp::Mul => match a.checked_mul(b) {
                         Some(v) => v,
                         None => {
-                            if overflow.is_some() {
+                            if overflow.is_some() || width.is_none() {
                                 return Err(self.trap(SiteKind::Overflow, line, overflow));
                             }
-                            width.wrap(a.wrapping_mul(b))
+                            width.unwrap().wrap(a.wrapping_mul(b))
                         }
                     },
                     BinOp::Div | BinOp::Mod => {
@@ -311,35 +327,23 @@ impl<'a> Vm<'a> {
                         match int_pow(a, b as u128, width) {
                             Some(v) => v,
                             None => {
-                                if overflow.is_some() {
+                                if overflow.is_some() || width.is_none() {
                                     return Err(self.trap(SiteKind::Overflow, line, overflow));
                                 }
-                                wrapping_pow(a, b as u128, width)
+                                wrapping_pow(a, b as u128, width.unwrap())
                             }
                         }
                     }
                     _ => unreachable!(),
                 };
-                let r = if width.holds(r) {
-                    r
-                } else if overflow.is_some() {
-                    return Err(self.trap(SiteKind::Overflow, line, overflow));
-                } else {
-                    width.wrap(r)
-                };
+                let r = self.fit(width, r, overflow, line)?;
                 self.stack.push(Value::Int(r));
             }
             Op::IntNeg { width, overflow, line } => {
                 let (width, overflow, line) = (*width, *overflow, *line);
                 let a = self.pop_int();
-                let r = -a;
-                let r = if width.holds(r) {
-                    r
-                } else if overflow.is_some() {
-                    return Err(self.trap(SiteKind::Overflow, line, overflow));
-                } else {
-                    width.wrap(r)
-                };
+                let r = a.checked_neg().ok_or_else(|| Outcome::Trap { kind: SiteKind::Overflow, line, site: overflow })?;
+                let r = self.fit(width, r, overflow, line)?;
                 self.stack.push(Value::Int(r));
             }
             Op::BinOp { op, width } => {
@@ -573,6 +577,16 @@ impl<'a> Vm<'a> {
                 });
             }
             Op::Nop => {}
+            Op::Note(id) => {
+                let id = *id as usize;
+                if let Some(Value::Int(v)) = self.stack.last() {
+                    let v = *v;
+                    self.free_ranges[id] = Some(match self.free_ranges[id] {
+                        None => (v, v),
+                        Some((lo, hi)) => (lo.min(v), hi.max(v)),
+                    });
+                }
+            }
             Op::Halt => return Ok(Flow::Done(Outcome::Exit(0))),
         }
         Ok(Flow::Continue)
@@ -650,7 +664,7 @@ fn cmp_float(op: BinOp, o: Option<std::cmp::Ordering>) -> bool {
 }
 
 /// Exact integer power, `None` if it leaves the width.
-pub fn int_pow(a: i128, b: u128, width: IntWidth) -> Option<i128> {
+pub fn int_pow(a: i128, b: u128, width: Option<IntWidth>) -> Option<i128> {
     if b == 0 { return Some(1); }
     match a {
         0 => return Some(0),
@@ -662,8 +676,10 @@ pub fn int_pow(a: i128, b: u128, width: IntWidth) -> Option<i128> {
     let mut i = 0u128;
     while i < b {
         r = r.checked_mul(a)?;
-        if !width.holds(r) {
-            return None;
+        if let Some(w) = width {
+            if !w.holds(r) {
+                return None;
+            }
         }
         i += 1;
     }

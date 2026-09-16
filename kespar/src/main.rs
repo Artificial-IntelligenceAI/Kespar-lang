@@ -55,11 +55,13 @@ fn main() {
     };
     let mut dec = rep.decisions.clone();
     if all_checks {
-        dec.site_checked = vec![true; prog.sites.len()];
+        dec.site_checked = prog.sites.iter().map(|s| s.active && s.tier != kespar::ast::Tier::Nocheck).collect();
         dec.known.clear();
         dec.whole = None;
     }
-    let _ = (report, types);
+    if report || types || cmd == "check" {
+        print!("{}", kespar::precog::print_report(&rep, types));
+    }
     match cmd.as_str() {
         "check" => {}
         "build" => {

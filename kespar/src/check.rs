@@ -204,13 +204,17 @@ fn fin_expr(e: &mut Expr, types: &mut Types, sites: &mut [Site]) {
         EK::Neg(x, site) => {
             fin_expr(x, types, sites);
             if e.ty.is_bin() { if let Some(s) = site { sites[*s as usize].active = false; } }
+            if let (Ty::Int(IntTy::Free(id)), Some(s)) = (&e.ty, site) { sites[*s as usize].free = Some(*id); }
         }
         EK::Not(x) | EK::Len(x) => fin_expr(x, types, sites),
         EK::Binary(_, a, b, s1, s2) => {
             fin_expr(a, types, sites);
             fin_expr(b, types, sites);
             if a.ty.is_bin() {
-                for s in [s1, s2].into_iter().flatten() { sites[*s as usize].active = false; }
+                for s in [&*s1, &*s2].into_iter().flatten() { sites[*s as usize].active = false; }
+            }
+            if let Ty::Int(IntTy::Free(id)) = &a.ty {
+                if let Some(s) = s1 { sites[*s as usize].free = Some(*id); }
             }
         }
         EK::Index(a, b, _) | EK::Fill(a, b, _) => { fin_expr(a, types, sites); fin_expr(b, types, sites); }
@@ -228,7 +232,7 @@ fn fin_expr(e: &mut Expr, types: &mut Types, sites: &mut [Site]) {
 impl Checker {
     fn site(&mut self, ctx: &FnCtx, line: u32, kind: SiteKind, what: String) -> SiteId {
         let id = self.sites.len() as SiteId;
-        self.sites.push(Site { id, line, kind, tier: *ctx.tiers.last().unwrap(), func: ctx.id, what, active: true });
+        self.sites.push(Site { id, line, kind, tier: *ctx.tiers.last().unwrap(), func: ctx.id, what, active: true, free: None });
         id
     }
 

@@ -24,8 +24,10 @@ pub enum Known {
 pub struct Decisions {
     /// Per site id: keep the run-time check?
     pub site_checked: Vec<bool>,
-    /// Per free id: the width Precog chose.
-    pub widths: Vec<IntWidth>,
+    /// Per free id: the width Precog chose; `None` (compile-time runs only) means unbounded.
+    pub widths: Vec<Option<IntWidth>>,
+    /// Emit `Note` after every free-typed value so the VM can report the range each free name held.
+    pub track_frees: bool,
     /// Expression id → known value (only for pure expressions).
     pub known: HashMap<u32, Known>,
     /// The program read nothing and was run to the end at compile time:
@@ -74,7 +76,7 @@ pub fn emit(prog: &Program, dec: &Decisions) -> Module {
             _ => ops.push(Op::Halt),
         }
         funcs[prog.main as usize] = Code { name: "MAIN".into(), nparams: 0, nlocals: 0, ops };
-        return Module { consts, funcs, main: prog.main, read_names: prog.reads.iter().map(|r| r.name.clone()).collect() };
+        return Module { consts, funcs, main: prog.main, read_names: prog.reads.iter().map(|r| r.name.clone()).collect(), nfrees: prog.free_names.len() as u32 };
     }
 
     for f in &prog.funcs {
@@ -85,13 +87,13 @@ pub fn emit(prog: &Program, dec: &Decisions) -> Module {
         consts = em.consts;
         funcs.push(Code { name: f.name.clone(), nparams: f.params.len() as u32, nlocals, ops: em.ops });
     }
-    Module { consts, funcs, main: prog.main, read_names: prog.reads.iter().map(|r| r.name.clone()).collect() }
+    Module { consts, funcs, main: prog.main, read_names: prog.reads.iter().map(|r| r.name.clone()).collect(), nfrees: prog.free_names.len() as u32 }
 }
 
 impl<'a> Emitter<'a> {
-    fn width(&self, t: &Ty) -> IntWidth {
+    fn width(&self, t: &Ty) -> Option<IntWidth> {
         match t {
-            Ty::Int(IntTy::Fixed(w)) => *w,
+            Ty::Int(IntTy::Fixed(w)) => Some(*w),
             Ty::Int(IntTy::Free(id)) => self.dec.widths[*id as usize],
             other => unreachable!("width of {other:?}"),
         }
@@ -277,7 +279,7 @@ impl<'a> Emitter<'a> {
                 let cont = self.here();
                 self.ops.push(Op::Load(idx));
                 self.konst(Const::Int(1));
-                self.ops.push(Op::IntOp { op: BinOp::Add, width: IntWidth::I64, overflow: None, second: None, line: s.line });
+                self.ops.push(Op::IntOp { op: BinOp::Add, width: Some(IntWidth::I64), overflow: None, second: None, line: s.line });
                 self.ops.push(Op::Store(idx));
                 self.ops.push(Op::Jump(start));
                 let end = self.here();
@@ -344,6 +346,15 @@ impl<'a> Emitter<'a> {
     }
 
     fn expr(&mut self, e: &Expr) {
+        self.expr_inner(e);
+        if self.dec.track_frees {
+            if let Ty::Int(IntTy::Free(id)) = &e.ty {
+                self.ops.push(Op::Note(*id));
+            }
+        }
+    }
+
+    fn expr_inner(&mut self, e: &Expr) {
         if let Some(k) = self.dec.known.get(&e.id) {
             match k {
                 Known::Int(v) => self.konst(Const::Int(*v)),
@@ -472,13 +483,13 @@ impl<'a> Emitter<'a> {
                 self.expr(x);
                 match (&x.ty, &e.ty) {
                     (Ty::Int(_), Ty::Int(_)) => {
-                        let width = self.width(&e.ty);
+                        let width = self.width(&e.ty).expect("conversion target is a fixed width");
                         let overflow = self.keep(*site);
                         self.ops.push(Op::IntToInt { width, overflow, line: e.line });
                     }
                     (Ty::Int(_), Ty::Bin(w)) => self.ops.push(Op::IntToBin { width: *w }),
                     (Ty::Bin(_), Ty::Int(_)) => {
-                        let width = self.width(&e.ty);
+                        let width = self.width(&e.ty).expect("conversion target is a fixed width");
                         let overflow = self.keep(*site);
                         self.ops.push(Op::BinToInt { width, overflow, line: e.line });
                     }
