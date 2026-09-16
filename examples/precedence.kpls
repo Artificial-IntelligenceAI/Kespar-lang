@@ -1,0 +1,17 @@
+MAIN {
+    var 'a' := [1 + 2 x 3];
+    var 'b' := [2 xx 3 xx 2];
+    var 'c' := [(2 xx 3) xx 2];
+    var 'd' := [-2 xx 2];
+    var 'e' := [(6 / 2) x 3];
+    var 'f' := [10 - 3 - 2];
+    var 'g' := [(7 mod 3) + 1];
+    var 'h' := [(-7) mod 3];
+    var 'i' := [(-7) / 2];
+    std::printu.stdout['a' " " 'b' " " 'c' " " 'd' " " 'e' " " 'f' " " 'g' " " 'h' " " 'i' \n];
+    var 'ok' := ['a' + 1 > 'b' - 2 and not ('a' == 'b') or false];
+    std::printu.stdout['ok' \n];
+    var 't' := ["ab" == "ab"];
+    var 'u' := ["ab" !== "ab"];
+    std::printu.stdout['t' 'u' \n];
+}

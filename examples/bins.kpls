@@ -1,0 +1,19 @@
+MAIN {
+    var.bin32 'x' = [0.1];
+    var.bin64 'y' = [0.1];
+    var 'z' := [1.5 x 2.0];
+    std::print.stdout['x' \n];
+    std::printu.stdout['x' \n];
+    std::print.stdout['y' \n];
+    std::printu.stdout['z' " " 'y' \n];
+    var 's' := ["x is " 'x'];
+    std::printu.stdout['s' \n];
+    var.bin64 'big' = [1.0e21];
+    std::printu.stdout['big' \n];
+    var.bin64 'inf' = [1.0 / 0.0];
+    std::printu.stdout['inf' " " [-'inf'] \n];
+    var 'n' := [std::to.int32[2.9]];
+    var 'm' := [std::to.int32[-2.9]];
+    std::printu.stdout['n' " " 'm' " " [std::to.bin64[7]] " " [std::to.str.utf8[2.5]] \n];
+    std::printu.stdout[[std::to.bin32[1.0e40]] \n];
+}

@@ -1,0 +1,12 @@
+MAIN {
+    var.str.utf8 'name' = [std::read.stdin[1, 20]];
+    var.list.int16 'xs' = [std::read.stdin[1, 5, -50, 50]];
+    var.bool 'flag' = [std::read.stdin[]];
+    var.bin64 'w' = [std::read.stdin[]];
+    var 'sum' := [0];
+    loop.for 'v' in ['xs'] { 'sum' = ['sum' + 'v']; }
+    std::printu.stdout["hello " 'name' ", sum " 'sum' ", " 'flag' ", " 'w' \n];
+    if ['flag'] {
+        std::printu.stdout['xs'[std::len['xs'] - 1] \n];
+    }
+}

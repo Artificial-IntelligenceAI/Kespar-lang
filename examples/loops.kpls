@@ -1,0 +1,23 @@
+MAIN {
+    var 'i' := [0];
+    loop {
+        'i' = ['i' + 1];
+        if ['i' == 3] { continue; }
+        if ['i' > 5] { break; }
+        std::printu.stdout['i' \n];
+    }
+    var 'n' := [10];
+    loop.while ['n' > 0] {
+        'n' = ['n' - 3];
+    }
+    std::printu.stdout['n' \n];
+    loop.for 'k' in [std::range[5, 1]] {
+        std::printu.stdout["never" \n];
+    }
+    var.uint8 'c' = [0];
+    loop.for 'j' in [std::range[250, 255]] {
+        'c' = ['j'];
+    }
+    std::printu.stdout['c' \n];
+    std::exit[7];
+}

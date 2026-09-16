@@ -1,0 +1,49 @@
+func.bool is_even [var.int32 'n'] {
+    return [('n' mod 2) == 0];
+}
+
+func.int32 clamp [var.int32 'n', var.int32 'low', var.int32 'high'] {
+    if ['n' < 'low'] {
+        return ['low'];
+    } else.if ['n' > 'high'] {
+        return ['high'];
+    } else {
+        return ['n'];
+    }
+}
+
+MAIN {
+    var.list.int32 'scores' = [72, 95, 38, 100, 61, 87];
+
+    var 'count' := [0];
+    var 'total' := [0];
+    var 'evens' := [0];
+    var 'best' := [0];
+
+    loop.for 'score' in ['scores'] {
+        'count' = ['count' + 1];
+        'total' = ['total' + 'score'];
+        if [is_even['score']] {
+            'evens' = ['evens' + 1];
+        }
+        if ['score' > 'best'] {
+            'best' = ['score'];
+        }
+    }
+
+    var 'average' := ['total' / 'count'];
+    var 'curved' := [clamp['average' + 10, 0, 100]];
+
+    std::printu.stdout["scored " 'count' " tests" \n];
+    std::printu.stdout["total " 'total' ", best " 'best' \n];
+    std::printu.stdout["even scores: " 'evens' \n];
+    std::printu.stdout["average " 'average' ", curved " 'curved' \n];
+
+    if ['average' >== 90] {
+        std::printu.stdout["grade A" \n];
+    } else.if ['average' >== 75] {
+        std::printu.stdout["grade B" \n];
+    } else {
+        std::printu.stdout["keep going" \n];
+    }
+}

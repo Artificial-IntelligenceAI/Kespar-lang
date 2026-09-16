@@ -1,0 +1,10 @@
+# This Mac's Xcode licence is not accepted, so /usr/bin/cc and xcrun fail;
+# point everything at the CommandLineTools copies and Homebrew's Z3.
+[target.aarch64-apple-darwin]
+linker = "/Library/Developer/CommandLineTools/usr/bin/cc"
+
+[env]
+SDKROOT = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+Z3_SYS_Z3_HEADER = "/opt/homebrew/include/z3.h"
+BINDGEN_EXTRA_CLANG_ARGS = "-I/opt/homebrew/include"
+LIBRARY_PATH = "/opt/homebrew/lib"

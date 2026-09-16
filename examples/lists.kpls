@@ -1,0 +1,23 @@
+MAIN {
+    var 'xs' := [1, 2, 3];
+    var 'ys' := ['xs'];
+    'ys'[0] = [10];
+    std::printu.stdout['xs' \n];
+    var 'grid' := [[1, 2], [3, 4]];
+    'grid'[1][0] = [30];
+    std::printu.stdout['grid' " " [std::len['grid']] \n];
+    var 'zs' := [std::fill[0, 4]];
+    'zs'[3] = [7];
+    std::printu.stdout['zs' \n];
+    var 'one' := [5,];
+    std::printu.stdout['one' \n];
+    var.list.str.utf8 'words' = ["a", "bb"];
+    std::printu.stdout[[std::len['words'[1]]] " " 'words' \n];
+    var 'sum' := [0];
+    loop.for 'g' in ['grid'] {
+        loop.for 'v' in ['g'] {
+            'sum' = ['sum' + 'v'];
+        }
+    }
+    std::printu.stdout['sum' \n];
+}

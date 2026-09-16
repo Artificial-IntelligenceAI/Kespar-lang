@@ -1,0 +1,12 @@
+MAIN {
+    var 'x' := [1];
+    if [true] {
+        var 'x' $:= [2];
+        std::printu.stdout['x' \n];
+    }
+    std::printu.stdout['x' \n];
+    var.immut.int32 'limit' = [10];
+    var.mut 'counter' := [0];
+    'counter' = ['counter' + 'limit'];
+    std::printu.stdout['counter' \n];
+}

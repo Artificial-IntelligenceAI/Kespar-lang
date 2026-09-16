@@ -1,0 +1,16 @@
+func twice [var 'n'] {
+    return ['n' x 2];
+}
+func shout [var.str.utf8 'text'] {
+    std::printu.stdout['text' "!" \n];
+}
+func fact [var 'n'] {
+    if ['n' <== 1] { return [1]; }
+    return ['n' x fact['n' - 1]];
+}
+MAIN {
+    var 'four' := [twice[2]];
+    var 'big' := [twice[twice['four']]];
+    shout["hi"];
+    std::printu.stdout['four' " " 'big' " " [fact[20]] \n];
+}
