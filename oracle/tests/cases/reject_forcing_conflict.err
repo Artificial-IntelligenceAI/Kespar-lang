@@ -1,0 +1,1 @@
+error: 'y' is used as int32 at line 6 and as int64 at line 7

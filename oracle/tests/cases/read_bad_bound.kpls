@@ -1,0 +1,6 @@
+MAIN {
+    var.uint8 'k' = [std::read.stdin[1, 8]];
+    std::print.stdout["k = " 'k' \n];
+    var.list.int16 'xs' = [std::read.stdin[1, 3, -50, 50]];
+    std::print.stdout["never" \n];
+}

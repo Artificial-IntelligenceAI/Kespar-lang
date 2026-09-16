@@ -1,0 +1,40 @@
+// §7: typed and untyped functions, recursion, any order, nothing-functions, immut params, call as statement
+func.int32 add [var.int32 'a', var.int32 'b'] {
+    return ['a' + 'b'];
+}
+func shout [var.immut.str.utf8 'text'] {
+    std::printu.stdout['text' "!" \n];
+}
+func twice [var 'n'] {
+    return ['n' x 2];
+}
+func fib [var 'n'] {
+    if ['n' < 2] { return ['n']; }
+    return [fib['n' - 1] + fib['n' - 2]];
+}
+func.bool even [var.uint8 'n'] {
+    if [('n' mod 2) == 0] { return [true]; }
+    return [false];
+}
+func early [var 'k'] {
+    loop {
+        if ['k' > 3] { return; }
+        'k' = ['k' + 1];
+    }
+}
+MAIN {
+    var 'sum' := [add[10, 20]];
+    var 'four' := [twice[2]];
+    shout["hi"];
+    std::print.stdout['sum' " " 'four' " " fib[15] " " even[3] even[4] " " later[] \n];
+    add[1, 2];
+    early[0];
+    var 'half' := [scale[1.0]];
+    std::print.stdout['half' \n];
+}
+func scale [var 'v'] {
+    return ['v' x 0.5];
+}
+func.str.utf8 later [] {
+    return ["declared after MAIN"];
+}

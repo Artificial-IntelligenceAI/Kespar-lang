@@ -1,0 +1,8 @@
+// §8.3 step 2: a free name never overflows in the reference interpreter
+MAIN {
+    var 'n' := [1];
+    loop.for 'i' in [std::range[1, 100]] { 'n' = ['n' x 2]; }
+    std::print.stdout['n' " " (-'n') " " ('n' / 3) " " ('n' mod 1000) \n];
+    var 'neg' := [0 - 5];
+    std::print.stdout[('neg' xx 3) " " ((-2) xx 63) \n];
+}

@@ -1,0 +1,6 @@
+func hello [] {
+    std::print.stdout["hello" \n];
+}
+MAIN {
+    var 'x' := [hello[]];
+}

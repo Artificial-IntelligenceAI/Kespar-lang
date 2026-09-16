@@ -1,0 +1,16 @@
+// §6.7 stored form: the exact decimal expansion, at the value's own width
+MAIN {
+    var.bin32 'a' = [0.1];
+    var.bin64 'b' = [0.1];
+    var.bin64 'one' = [1.0];
+    var.bin64 'neg0' = [-0.0];
+    var.bin64 'inf' = [1.0 / 0.0];
+    var.bin64 'ninf' = [-1.0 / 0.0];
+    var.bin64 'nan' = [0.0 / 0.0];
+    var.bin32 'sum' = [0.1 + 0.2];
+    var.bin64 'sum64' = [0.1 + 0.2];
+    std::print.stdout['a' \n 'b' \n 'one' \n 'neg0' \n 'inf' \n 'ninf' \n 'nan' \n 'sum' \n 'sum64' \n];
+    var 's' := ["x is " 'a'];
+    std::printu.stdout['s' \n];
+    std::print.stdout[(2.0 xx 0.5) \n];
+}

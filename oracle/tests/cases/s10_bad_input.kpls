@@ -1,0 +1,15 @@
+// sum of the first n squares, n from outside
+func.int32 square [var.int32 'x'] {
+    return ['x' x 'x'];               // proven at every call site: x <== 1000
+}
+
+MAIN {
+    var.int32 'n' = [std::read.stdin[0, 1000]];
+    var 'total' := [0];               // forced to int32 by square[...]
+    var 'odd' := [0];                 // free: holds 0..500 → uint16
+    loop.for 'i' in [std::range[1, 'n']] {       // 'i' forced to int32 by 'n'
+        'total' = ['total' + square['i']];        // proven <== 333_833_500: no check
+        if [('i' mod 2) == 1] { 'odd' = ['odd' + 1]; }   // free: no check
+    }
+    std::printu.stdout["sum = " 'total' ", odd = " 'odd' \n];
+}

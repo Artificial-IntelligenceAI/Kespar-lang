@@ -1,0 +1,11 @@
+// §6.7 useful form: shortest round-trip, no exponent, .0 omitted
+MAIN {
+    var.bin32 'a' = [0.1];
+    var.bin64 'b' = [0.1];
+    var.bin64 'big' = [1.0e21];
+    var.bin64 'one' = [1.0];
+    var.bin32 'sum' = [0.1 + 0.2];
+    var 'xs' := [0.5, 2.5];
+    std::printu.stdout['a' " " 'b' " " 'big' " " 'one' " " 'sum' " " 'xs' " " std::to.str.utf8['a'] \n];
+    std::print.stdout[std::to.str.utf8['sum'] \n];
+}

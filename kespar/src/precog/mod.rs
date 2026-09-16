@@ -204,6 +204,13 @@ fn bounded_run(prog: &Program) -> Result<Report> {
                     }
                     (Verdict::Checked, note)
                 }
+                Some(smt::Answer::MayFail(cx)) => {
+                    note = format!("{note}; layer 3: may fail, e.g. {cx} (bounded encoding)");
+                    if s.tier == Tier::Check {
+                        check_errors.push(CompileError::new(s.line, format!("`check` could not prove no {} in `{}` ({note})", s.kind.text(), s.what)));
+                    }
+                    (Verdict::Checked, note)
+                }
                 Some(smt::Answer::Unknown(why)) => {
                     note = format!("{note}; layer 3: {why}");
                     if s.tier == Tier::Check {
@@ -226,11 +233,17 @@ fn bounded_run(prog: &Program) -> Result<Report> {
         return Err(e);
     }
 
-    // Known values: pure expressions that were always the same.
+    // Known values: pure expressions that were always the same — and that
+    // cannot fail: a value recorded after a check passed says nothing about
+    // the evaluations where it did not.
+    let sites_in = sites_inside(prog);
     let mut known = HashMap::new();
     for (id, v) in &an.results {
         let Some(f) = an.expr_func.get(id) else { continue };
         if an.incomplete[*f as usize] {
+            continue;
+        }
+        if sites_in.get(id).map_or(false, |ss| ss.iter().any(|s| site_checked[*s as usize])) {
             continue;
         }
         let k = match v {
@@ -328,3 +341,46 @@ fn truncate(s: &str, n: usize) -> String {
 
 #[allow(dead_code)]
 fn unused(_: &ISet) {}
+
+/// For every expression, the check sites inside it (itself included).
+fn sites_inside(prog: &Program) -> HashMap<u32, Vec<SiteId>> {
+    use crate::ir::{EK, PieceIr, SK};
+    let mut out: HashMap<u32, Vec<SiteId>> = HashMap::new();
+    fn walk(e: &crate::ir::Expr, out: &mut HashMap<u32, Vec<SiteId>>) -> Vec<SiteId> {
+        let mut mine = Vec::new();
+        match &e.kind {
+            EK::Call(_, args) | EK::List(args) => args.iter().for_each(|a| mine.extend(walk(a, out))),
+            EK::Pieces(ps) => ps.iter().for_each(|p| if let PieceIr::Value(v) = p { mine.extend(walk(v, out)) }),
+            EK::Neg(x, s) => { mine.extend(walk(x, out)); mine.extend(s.iter()); }
+            EK::Not(x) | EK::Len(x) => mine.extend(walk(x, out)),
+            EK::To(x, s) => { mine.extend(walk(x, out)); mine.extend(s.iter()); }
+            EK::Binary(_, a, b, s1, s2) => { mine.extend(walk(a, out)); mine.extend(walk(b, out)); mine.extend(s1.iter()); mine.extend(s2.iter()); }
+            EK::Index(a, b, s) | EK::Fill(a, b, s) => { mine.extend(walk(a, out)); mine.extend(walk(b, out)); mine.push(*s); }
+            _ => {}
+        }
+        out.insert(e.id, mine.clone());
+        mine
+    }
+    fn block(b: &[crate::ir::Stmt], out: &mut HashMap<u32, Vec<SiteId>>) {
+        for s in b {
+            match &s.kind {
+                SK::Let(_, e) | SK::Assign(_, e) | SK::Exit(e) | SK::CallStmt(e) | SK::Return(Some(e)) => { walk(e, out); }
+                SK::AssignIndex(t, i, v, _) => { walk(t, out); walk(i, out); walk(v, out); }
+                SK::Print { pieces, .. } => pieces.iter().for_each(|p| { walk(p, out); }),
+                SK::If(brs, el) => {
+                    for (c, b) in brs { walk(c, out); block(b, out); }
+                    if let Some(b) = el { block(b, out); }
+                }
+                SK::Block(b) | SK::Loop(b) => block(b, out),
+                SK::While(c, b) => { walk(c, out); block(b, out); }
+                SK::ForRange { a, b, body, .. } => { walk(a, out); walk(b, out); block(body, out); }
+                SK::ForList { list, body, .. } => { walk(list, out); block(body, out); }
+                _ => {}
+            }
+        }
+    }
+    for f in &prog.funcs {
+        block(&f.body, &mut out);
+    }
+    out
+}

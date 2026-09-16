@@ -1,0 +1,3 @@
+MAIN {
+    loop.for 'i' in [std::range[1, 3]] { 'i' = [0]; }
+}

@@ -1,0 +1,6 @@
+MAIN {
+    var.int32 'z' = [0];
+    nocheck {
+        var 'q' := [1 / 'z'];
+    }
+}

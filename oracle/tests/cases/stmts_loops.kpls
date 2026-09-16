@@ -1,0 +1,32 @@
+// §5: if / else.if / else, loop, loop.while, loop.for over a list and a range, break, continue
+MAIN {
+    var 'n' := [0];
+    loop {
+        'n' = ['n' + 1];
+        if ['n' == 2] { continue; }
+        if ['n' > 4] { break; }
+        std::print.stdout['n' " "];
+    }
+    std::print.stdout[\n];
+    var 'i' := [10];
+    loop.while ['i' > 0] {
+        'i' = ['i' - 3];
+        if ['i' > 7] { std::print.stdout["big"]; } else.if ['i' > 3] { std::print.stdout["mid"]; } else { std::print.stdout["small"]; }
+    }
+    std::print.stdout[\n];
+    var 'xs' := [3, 1, 2];
+    var 'sum' := [0];
+    loop.for 'x' in ['xs'] { 'sum' = ['sum' + 'x']; }
+    loop.for 'k' in [std::range[1, 3]] {
+        loop.for 'j' in [std::range['k', 3]] {
+            if ['j' == 3] { break; }
+            std::print.stdout['k' 'j' " "];
+        }
+    }
+    std::print.stdout["sum " 'sum' \n];
+    loop.for 'none' in [std::range[5, 1]] { std::print.stdout["never"]; }
+    add[1, 2];
+}
+func add [var 'a', var 'b'] {
+    std::print.stdout["add " ('a' + 'b') \n];
+}

@@ -1,0 +1,15 @@
+// §4: one line per read; scalars trimmed, str verbatim, lists whitespace-separated
+MAIN {
+    var.int32 'n' = [std::read.stdin[]];
+    var.uint8 'k' = [std::read.stdin[1, 8]];
+    var.bin64 'x' = [std::read.stdin[]];
+    var.bin32 'y' = [std::read.stdin[]];
+    var.bool 'flag' = [std::read.stdin[]];
+    var.str.utf8 's' = [std::read.stdin[]];
+    var.str.utf8 't' = [std::read.stdin[1, 80]];
+    var.list.int16 'xs' = [std::read.stdin[1, 100]];
+    var.list.int16 'ys' = [std::read.stdin[0, 100, -50, 50]];
+    var.list.int8 'zs' = [std::read.stdin[]];
+    'n' = [std::read.stdin[-5, 5]];
+    std::print.stdout['n' "|" 'k' "|" 'x' "|" 'y' "|" 'flag' "|" 's' "|" 't' "|" 'xs' "|" 'ys' "|" 'zs' \n];
+}

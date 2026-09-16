@@ -20,6 +20,8 @@ use crate::types::{IntTy, Ty};
 pub const UNROLL: u32 = 32;
 /// Inlined call depth (provisional).
 pub const DEPTH: u32 = 8;
+/// Loop iterations encoded in the whole program before every remaining loop is havocked (provisional).
+pub const TOTAL_UNROLL: u32 = 160;
 /// Z3 resource limit per query — a step count, never a clock (provisional).
 pub const RLIMIT: u32 = 10_000_000;
 /// Bits used for a free name: enough that nothing Precog accepted can wrap.
@@ -83,6 +85,8 @@ struct Instance<'ctx> {
     loops: Vec<u32>,
     /// Inside a call that was cut off somewhere above it.
     in_cut: bool,
+    /// Something before it on the path was havocked: a model may be spurious.
+    after_havoc: bool,
 }
 
 pub struct ReadVar<'ctx> {
@@ -110,17 +114,21 @@ pub struct Smt<'ctx, 'a> {
     ctl: Vec<Ctl<'ctx>>,
     cur_func: usize,
     /// Objects with a constraint on every element: (initial row, lo, hi) for bounded reads.
-    bounded: Vec<(Array<'ctx>, i128, i128)>,
+    bounded: Vec<(Array<'ctx>, i128, i128, bool)>,
     /// Objects from `std::fill`: (initial row, the value).
     fills: Vec<(Array<'ctx>, SVal<'ctx>)>,
     pub queries: u32,
+    unroll_left: u32,
+    havocked: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Answer {
     Proven,
-    /// Some input reaches the site with an illegal value.
+    /// Some input reaches the site with an illegal value (the encoding was exact up to there).
     Fails(String),
+    /// The bounded encoding found a model, but something before the site was havocked.
+    MayFail(String),
     Unknown(String),
 }
 
@@ -136,7 +144,7 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
         let mut params = Params::new(ctx);
         params.set_u32("rlimit", RLIMIT);
         solver.set_params(&params);
-        Smt { ctx, prog, widths, solver, instances: vec![Vec::new(); prog.sites.len()].into_iter().map(|_: Vec<()>| Vec::new()).collect(), reads: Vec::new(), next_obj: 0, next_loop: 0, loop_stack: Vec::new(), incomplete_loops: Vec::new(), depth: 0, cut: false, ret: Vec::new(), ctl: Vec::new(), cur_func: prog.main as usize, bounded: Vec::new(), fills: Vec::new(), queries: 0 }
+        Smt { ctx, prog, widths, solver, instances: vec![Vec::new(); prog.sites.len()].into_iter().map(|_: Vec<()>| Vec::new()).collect(), reads: Vec::new(), next_obj: 0, next_loop: 0, loop_stack: Vec::new(), incomplete_loops: Vec::new(), depth: 0, cut: false, ret: Vec::new(), ctl: Vec::new(), cur_func: prog.main as usize, bounded: Vec::new(), fills: Vec::new(), queries: 0, unroll_left: TOTAL_UNROLL, havocked: false }
     }
 
     // ---- sorts and sizes ----
@@ -236,9 +244,21 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
         Bool::or(self.ctx, &[a, b])
     }
 
-    fn site(&mut self, st: &SState<'ctx>, id: SiteId, fail: Bool<'ctx>) {
+    /// A site whose failure condition is only approximated: any model is a "may fail".
+    fn site_inexact(&mut self, st: &mut SState<'ctx>, id: SiteId, fail: Bool<'ctx>) {
         let cond = self.and(&st.guard, &fail);
-        self.instances[id as usize].push(Instance { cond, loops: self.loop_stack.clone(), in_cut: self.cut });
+        self.instances[id as usize].push(Instance { cond, loops: self.loop_stack.clone(), in_cut: self.cut, after_havoc: true });
+    }
+
+    /// Record a site instance. Where its check will stay, the program stops if it
+    /// fails, so the path continues only under `not fail`; a `nocheck` site
+    /// goes on regardless.
+    fn site(&mut self, st: &mut SState<'ctx>, id: SiteId, fail: Bool<'ctx>) {
+        let cond = self.and(&st.guard, &fail);
+        self.instances[id as usize].push(Instance { cond, loops: self.loop_stack.clone(), in_cut: self.cut, after_havoc: self.havocked });
+        if self.prog.sites[id as usize].tier != Tier::Nocheck {
+            st.guard = self.and(&st.guard, &fail.not());
+        }
     }
 
     // ---- entry ----
@@ -267,6 +287,9 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
             self.solver.assert(&inst.cond);
             self.queries += 1;
             let r = self.solver.check();
+            if std::env::var("KESPAR_SMT_DEBUG").is_ok() {
+                eprintln!("--- site {id} query ({r:?}):\n{}", self.solver);
+            }
             let ans = match r {
                 SatResult::Unsat => None,
                 SatResult::Sat => {
@@ -285,7 +308,9 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                             }
                         }
                     }
-                    Some(Answer::Fails(if parts.is_empty() { "some input".into() } else { parts.join(", ") }))
+                    let cx = if parts.is_empty() { "some input".into() } else { parts.join(", ") };
+                    let exact = !inst.after_havoc && !inst.in_cut && !inst.loops.iter().any(|l| self.incomplete_loops.contains(l));
+                    Some(if exact { Answer::Fails(cx) } else { Answer::MayFail(cx) })
                 }
                 SatResult::Unknown => Some(Answer::Unknown("solver gave up".into())),
             };
@@ -400,6 +425,8 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                 let mut exit = self.fal();
                 let mut fully = false;
                 for _ in 0..UNROLL {
+                    if self.unroll_left == 0 { break; }
+                    self.unroll_left -= 1;
                     let cur = st.vars[*var as usize].clone().unwrap().bv().clone();
                     let cont = if signed { cur.bvsle(&hi) } else { cur.bvule(&hi) };
                     exit = self.or(&exit, &self.and(&st.guard, &cont.not()));
@@ -443,6 +470,8 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                 let mut fully = false;
                 let mut k: u64 = 0;
                 for _ in 0..UNROLL {
+                    if self.unroll_left == 0 { break; }
+                    self.unroll_left -= 1;
                     let idx = BV::from_u64(self.ctx, k, 64);
                     let cont = idx.bvult(&len);
                     exit = self.or(&exit, &self.and(&st.guard, &cont.not()));
@@ -544,6 +573,8 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
         let mut exit = self.fal();
         let mut fully = false;
         for _ in 0..UNROLL {
+            if self.unroll_left == 0 { break; }
+            self.unroll_left -= 1;
             if let Some(c) = cond {
                 let cv = self.expr(st, c).boolean().clone();
                 exit = self.or(&exit, &self.and(&st.guard, &cv.not()));
@@ -573,6 +604,7 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
 
     /// Forget everything a loop body could have changed.
     fn havoc(&mut self, st: &mut SState<'ctx>, body: &[Stmt]) {
+        self.havocked = true;
         let mut assigned = Vec::new();
         assigned_vars(body, &mut assigned);
         let f = &self.prog.funcs[self.cur_func];
@@ -604,11 +636,12 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
     /// What is known about every element of a bounded read or a `std::fill`,
     /// asserted about the object's initial row at this index (stores build on it).
     fn constrain_elem(&mut self, idx64: &BV<'ctx>) {
-        for (row, lo, hi) in self.bounded.clone() {
+        for (row, lo, hi, signed) in self.bounded.clone() {
             let v = row.select(idx64).as_bv().unwrap();
             let bits = v.get_size();
             let (lo_b, hi_b) = (self.lit(lo, bits), self.lit(hi, bits));
-            self.solver.assert(&self.and(&v.bvsge(&lo_b), &v.bvsle(&hi_b)));
+            let ok = if signed { self.and(&v.bvsge(&lo_b), &v.bvsle(&hi_b)) } else { self.and(&v.bvuge(&lo_b), &v.bvule(&hi_b)) };
+            self.solver.assert(&ok);
         }
         for (row, val) in self.fills.clone() {
             let sel = row.select(idx64);
@@ -748,7 +781,7 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                         let Ty::Int(IntTy::Fixed(w)) = **elem else { unreachable!() };
                         let (elo, ehi) = bounds.value.unwrap_or((w.min(), w.max()));
                         let row = self.heap_for(st, elem).select(&id).as_array().unwrap();
-                        self.bounded.push((row, elo, ehi));
+                        self.bounded.push((row, elo, ehi, w.signed()));
                         self.reads.push(ReadVar { name, line: e.line, ast: SVal::List(len.clone()), signed: false });
                         SVal::List(id)
                     }
@@ -762,7 +795,8 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                     SVal::List(id) => st.lens.select(id).as_bv().unwrap(),
                     _ => unreachable!(),
                 };
-                SVal::Int(len.zero_ext(FREE_BITS - 64))
+                let bits = self.bits(&e.ty);
+                SVal::Int(if bits >= 64 { len.zero_ext(bits - 64) } else { len.extract(bits - 1, 0) })
             }
             EK::Fill(v, n, site) => {
                 let val = self.expr(st, v);
@@ -795,7 +829,7 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                         if let Some(s) = site {
                             // Bins are opaque: cannot say.
                             let unknown = Bool::fresh_const(self.ctx, "binfail");
-                            self.site(st, *s, unknown);
+                            self.site_inexact(st, *s, unknown);
                         }
                         self.fresh(&e.ty)
                     }
@@ -831,6 +865,7 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
         let f = &self.prog.funcs[fid as usize];
         if self.depth >= DEPTH {
             self.cut = true;
+            self.havocked = true;
             // Havoc every heap: the callee may write anything reachable.
             let keys: Vec<String> = st.heaps.keys().cloned().collect();
             for k in keys {
@@ -943,17 +978,35 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                                 }
                             }
                             BinOp::Pow => {
-                                // Not encoded: the exponent is symbolic in general.
                                 if let Some(s) = active(&s2) {
                                     let zero = self.lit(0, y.get_size());
                                     let neg = if signed { y.bvslt(&zero) } else { self.fal() };
                                     self.site(st, s, neg);
                                 }
-                                if let Some(s) = active(&s1) {
-                                    let unknown = Bool::fresh_const(self.ctx, "powfail");
-                                    self.site(st, s, unknown);
+                                // A literal exponent is a chain of multiplications, each checked;
+                                // a symbolic one is not encoded and the site is inexact.
+                                match (&b.kind, y.as_u64()) {
+                                    (EK::Int(_), Some(n)) if n <= 8 => {
+                                        let mut r = self.lit(1, x.get_size());
+                                        let mut fail = self.fal();
+                                        for _ in 0..n {
+                                            let ok = if signed { self.and(&r.bvmul_no_overflow(x, true), &r.bvmul_no_underflow(x)) } else { r.bvmul_no_overflow(x, false) };
+                                            fail = self.or(&fail, &ok.not());
+                                            r = r.bvmul(x);
+                                        }
+                                        if let Some(s) = active(&s1) {
+                                            self.site(st, s, fail);
+                                        }
+                                        r
+                                    }
+                                    _ => {
+                                        if let Some(s) = active(&s1) {
+                                            let unknown = Bool::fresh_const(self.ctx, "powfail");
+                                            self.site_inexact(st, s, unknown);
+                                        }
+                                        BV::fresh_const(self.ctx, "pow", x.get_size())
+                                    }
                                 }
-                                BV::fresh_const(self.ctx, "pow", x.get_size())
                             }
                             _ => unreachable!(),
                         };

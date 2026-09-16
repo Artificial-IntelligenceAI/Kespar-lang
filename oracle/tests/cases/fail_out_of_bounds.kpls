@@ -1,0 +1,6 @@
+MAIN {
+    var 'xs' := [1, 2, 3];
+    var 'i' := [std::len['xs']];
+    std::print.stdout['xs'['i' - 1] \n];
+    'xs'['i'] = [4];
+}

@@ -98,13 +98,6 @@ impl RTy {
             RTy::Nothing => "nothing".to_string(),
         }
     }
-    pub fn is_free(&self) -> bool {
-        match self {
-            RTy::Int(None) => true,
-            RTy::List(t) => t.is_free(),
-            _ => false,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,6 +153,8 @@ pub struct NamedVar {
     pub rty: RTy,
     /// For a free integer name: its class (shared by every name forced to it).
     pub class: Option<usize>,
+    /// False when some leaf of the name's type was forced by nothing (§8.3 step 2).
+    pub forced: bool,
 }
 
 pub struct Checked {
@@ -177,7 +172,7 @@ impl Checked {
         self.names
             .iter()
             .map(|n| {
-                let t = if n.rty.is_free() { "free".to_string() } else { n.rty.render() };
+                let t = if n.forced { n.rty.render() } else { "free".to_string() };
                 format!("'{}' {}", n.name, t)
             })
             .collect()
@@ -260,7 +255,8 @@ pub fn check(program: Program) -> Result<Checked, CompileError> {
     for (name, line, col, ty) in c.named.clone() {
         let rty = c.resolve_ty(&ty);
         let class = c.class_of(&ty);
-        names.push(NamedVar { name, line, col, rty, class });
+        let forced = !c.has_free_leaf(&ty);
+        names.push(NamedVar { name, line, col, rty, class, forced });
     }
     names.sort_by_key(|n| (n.line, n.col));
     Ok(Checked { program, funcs, nodes: c.nodes, sites, names, index_assign_sites })
@@ -1096,6 +1092,15 @@ impl Checker {
         }
     }
 
+    /// Is any leaf of the type an unbound variable?
+    fn has_free_leaf(&mut self, t: &Ty) -> bool {
+        match self.shallow(t) {
+            Ty::Var(_) => true,
+            Ty::List(e) => self.has_free_leaf(&e),
+            _ => false,
+        }
+    }
+
     /// The free-integer class of a type, if it is (or is a list of) a free integer.
     fn class_of(&mut self, t: &Ty) -> Option<usize> {
         match self.shallow(t) {
@@ -1199,13 +1204,19 @@ impl Checker {
         let col = e.col;
         let mut sites = Vec::new();
         match &e.kind {
-            ExprKind::IntLit(v) => {
-                if let RTy::Int(Some(w)) = &rty {
+            ExprKind::IntLit(v) => match &rty {
+                RTy::Int(Some(w)) => {
                     if !w.fits(*v) {
                         return err(&format!("literal {} does not fit {}", v, w.name()), line);
                     }
                 }
-            }
+                RTy::Bin(BinW::B32) => {
+                    if !(*v as f32).is_finite() {
+                        return err(&format!("literal {} does not fit bin32", v), line);
+                    }
+                }
+                _ => {}
+            },
             ExprKind::BinLit(s) => {
                 let fits = match &rty {
                     RTy::Bin(BinW::B32) => s.parse::<f32>().map(|v| v.is_finite()).unwrap_or(false),
@@ -1250,7 +1261,13 @@ impl Checker {
                     sites.push(SiteKind::Overflow);
                 }
             }
-            ExprKind::Unary(UnOp::Not, x) | ExprKind::Group(x) | ExprKind::Len(x) => self.resolve_expr(x)?,
+            ExprKind::Unary(UnOp::Not, x) | ExprKind::Group(x) => self.resolve_expr(x)?,
+            ExprKind::Len(x) => {
+                self.resolve_expr(x)?;
+                if let RTy::Int(Some(_)) = rty {
+                    sites.push(SiteKind::Overflow);
+                }
+            }
             ExprKind::ListLit(items) => {
                 for it in items {
                     self.resolve_expr(it)?;

@@ -1,0 +1,3 @@
+MAIN {
+    std::print.stdout["count: " 10];
+}

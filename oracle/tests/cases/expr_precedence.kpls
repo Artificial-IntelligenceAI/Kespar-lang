@@ -1,0 +1,10 @@
+// §6.2: xx right-associative and above unary -, x chains, ( ) overrides, comparisons and logic
+MAIN {
+    std::print.stdout[(2 xx 3 xx 2) " " (-2 xx 2) " " (2 x 3 x 4) " " (1 + 2 x 3) " " ((1 + 2) x 3) \n];
+    std::print.stdout[(10 - 4 - 3) " " (7 / 2) " " ((7 mod 3) + 1) " " ((1 + 2) mod 2) \n];
+    var 'a' := [3];
+    if ['a' + 1 > 3 and not ('a' == 4) or false] { std::print.stdout["yes" \n]; }
+    if [not true or true] { std::print.stdout["not binds tighter than or" \n]; }
+    var.bin64 'f' = [2.0];
+    std::print.stdout[('f' xx 3.0 / 4.0) " " (-'f' xx 2.0) \n];
+}

@@ -1,0 +1,9 @@
+// §8.4: a forced name is checked like an explicit one; stdout is flushed before the stop
+MAIN {
+    var.int8 'a' = [100];
+    var 'b' := [27];
+    'b' = ['a'];
+    std::print.stdout["before" \n];
+    var 'c' := ['b' + 'b'];
+    std::print.stdout["after" \n];
+}

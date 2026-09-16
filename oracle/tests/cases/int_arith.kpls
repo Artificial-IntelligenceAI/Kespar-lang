@@ -1,0 +1,16 @@
+// §6.3: / truncates toward zero, mod takes the dividend's sign, 0 xx 0 = 1, unsigned arithmetic, MIN mod -1 = 0
+MAIN {
+    var.int32 'a' = [-7];
+    var.int32 'b' = [2];
+    var.int8 'm1' = [-1];
+    std::print.stdout[('a' / 'b') " " ('a' mod 'b') " " (7 / -2) " " (7 mod (-2)) " " (0 xx 0) " " (2 xx 10) \n];
+    var.uint8 'u' = [200];
+    var.uint8 'v' = [55];
+    std::print.stdout[('u' + 'v') " " ('u' / 'v') " " ('u' mod 'v') " " ('u' - 'u') \n];
+    var.int8 'min' = [-127 - 1];
+    std::print.stdout['min' " " ('min' mod 'm1') " " (-('min' + 1)) \n];
+    var.int64 'big' = [9_223_372_036_854_775_807];
+    std::print.stdout[('big' - 1 + 1) " " (('big' / 3) x 3) \n];
+    var 'free' := [2 xx 100];
+    std::print.stdout['free' " " ('free' x 4) \n];
+}

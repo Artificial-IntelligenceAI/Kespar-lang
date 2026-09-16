@@ -1,0 +1,6 @@
+MAIN {
+    var.int32 'a' = [300];
+    var 'ok' := [std::to.int16['a']];
+    std::print.stdout['ok' " " std::to.int32[-2.9] " " std::to.uint8[255.99] \n];
+    var 'bad' := [std::to.int8['a']];
+}

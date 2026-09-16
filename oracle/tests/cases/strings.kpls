@@ -1,0 +1,14 @@
+// §2/§6.5: str is immutable and compared by content; there is no + on str; pieces build text
+MAIN {
+    var.str.utf8 'a' = ["héllo"];
+    var 'b' := ['a' " world"];
+    var 'c' := ["héllo" " world"];
+    if ['b' == 'c' and 'a' !== 'b'] { std::print.stdout["same" \n]; }
+    var 'copy' := ['a'];
+    'copy' = ["changed"];
+    std::print.stdout['a' " " 'copy' " " std::len['b'] \n];
+    var.list.str.utf8 'words' = ["x", 'b'];
+    std::printu.stdout['words' \n];
+    var 'empty' := [""];
+    std::print.stdout["[" 'empty' "]" \n];
+}

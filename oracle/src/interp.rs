@@ -215,6 +215,7 @@ impl<'a> Interp<'a> {
                 }
             }
             StmtKind::Loop(body) => loop {
+                self.step()?;
                 match self.exec_block(body)? {
                     Flow::Break => break,
                     Flow::Return(v) => return Ok(Flow::Return(v)),
@@ -223,6 +224,7 @@ impl<'a> Interp<'a> {
             },
             StmtKind::While(cond, body) => {
                 while self.eval_bool(cond)? {
+                    self.step()?;
                     match self.exec_block(body)? {
                         Flow::Break => break,
                         Flow::Return(v) => return Ok(Flow::Return(v)),
@@ -241,6 +243,7 @@ impl<'a> Interp<'a> {
                     let mut i = av;
                     if av <= bv {
                         loop {
+                            self.step()?;
                             let mark = self.env.len();
                             self.env.push((var.clone(), Value::Int(i, aw)));
                             let flow = self.exec_block(body)?;
@@ -271,6 +274,7 @@ impl<'a> Interp<'a> {
                             }
                             l[k].clone()
                         };
+                        self.step()?;
                         let mark = self.env.len();
                         self.env.push((var.clone(), elem));
                         let flow = self.exec_block(body)?;
@@ -536,7 +540,7 @@ impl<'a> Interp<'a> {
                     if !w.fits(n) {
                         // a length that does not fit the context type: the value cannot be
                         // represented; treat as overflow at this node (§6.5 gives no rule).
-                        return Err(fail(1, format!("kespar: overflow at line {}", e.line)));
+                        return Err(self.fire(e, SiteKind::Overflow));
                     }
                 }
                 Value::Int(n, w)

@@ -1,0 +1,9 @@
+// §5: the counter never computes the value after b, so a range to the type's maximum does not overflow
+MAIN {
+    var.int8 'top' = [127];
+    var 'count' := [0];
+    loop.for 'i' in [std::range[120, 'top']] { 'count' = ['count' + 1]; }
+    std::print.stdout['count' \n];
+    var.uint8 'u' = [255];
+    loop.for 'j' in [std::range['u', 'u']] { std::print.stdout['j' \n]; }
+}

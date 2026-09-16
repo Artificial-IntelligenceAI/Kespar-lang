@@ -1,0 +1,33 @@
+// §8.3 step 1: forcing through operators, assignment, arguments, returns, list elements, range bounds; transitive
+func twice [var 'n'] {
+    return ['n' x 2];
+}
+func.int64 wide [var.int64 'v'] {
+    return ['v'];
+}
+MAIN {
+    var.int32 'a' = [1];
+    var.int8 'small' = [1];
+    var 'by_op' := ['a' + 1];
+    var 'by_assign' := [0];
+    'by_assign' = ['a'];
+    var 'by_arg' := [twice['small']];
+    var 'by_return' := [wide[5]];
+    var 'by_list' := [[1, 'a']];
+    var 'chain' := [0];
+    var 'link' := ['chain'];
+    'link' = ['by_op'];
+    var 'by_cmp' := [7];
+    var 'free' := [7];
+    var 'also_free' := ['free' + 1];
+    var 'len' := [std::len['by_list']];
+    var 'bin' := [1.5];
+    var 'bin32' := [std::to.bin32['bin'] x 2.0];
+    var 'text' := ["a" 'a'];
+    var 'flag' := [true];
+    loop.for 'i' in [std::range[1, 'a']] { }
+    loop.for 'e' in ['by_list'] { }
+    loop.for 'f' in [std::range[1, 3]] { }
+    var 'cmp' := ['by_cmp' == 'a'];
+    std::print.stdout['by_op' 'by_assign' 'by_arg' 'by_return' 'link' 'also_free' 'bin32' \n];
+}

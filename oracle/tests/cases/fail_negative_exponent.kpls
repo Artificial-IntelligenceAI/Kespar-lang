@@ -1,0 +1,6 @@
+MAIN {
+    var.int32 'e' = [0 - 1];
+    check {
+        std::print.stdout[(2 xx 'e') \n];
+    }
+}

@@ -1,0 +1,5 @@
+MAIN {
+    var.int32 'a' = [std::read.stdin[]];
+    var.int32 'b' = [std::read.stdin[]];
+    std::print.stdout['a' 'b' \n];
+}

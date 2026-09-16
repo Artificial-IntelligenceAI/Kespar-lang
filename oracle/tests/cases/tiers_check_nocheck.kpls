@@ -1,0 +1,15 @@
+// §8.4: the reference interpreter checks every site in every tier; tier blocks nest and scope
+MAIN {
+    var.int8 'a' = [100];
+    check {
+        var 'inner' := ['a' - 100];
+        nocheck {
+            var 'inner' $:= ['a' + 27];
+            std::print.stdout['inner' \n];
+        }
+        std::print.stdout['inner' \n];
+    }
+    nocheck {
+        var 'boom' := ['a' + 28];
+    }
+}

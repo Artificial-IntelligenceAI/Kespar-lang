@@ -1,0 +1,3 @@
+MAIN {
+    var 'n' := [std::to.int32["5"]];
+}

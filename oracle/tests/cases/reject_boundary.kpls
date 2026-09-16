@@ -1,0 +1,3 @@
+MAIN {
+    var 'n' := [std::read.stdin[]];
+}

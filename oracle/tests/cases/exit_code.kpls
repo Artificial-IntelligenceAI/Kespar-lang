@@ -1,0 +1,7 @@
+// §5/§9: std::exit[n] with n a uint8; stdout flushed first; nothing on stderr
+MAIN {
+    std::print.stdout["bye"];
+    var.uint8 'code' = [7];
+    std::exit['code'];
+    std::print.stdout["never"];
+}

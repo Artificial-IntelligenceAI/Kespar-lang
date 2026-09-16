@@ -1,0 +1,5 @@
+MAIN {
+    var.int32 'a' = [1];
+    var.int64 'b' = [2];
+    var 'c' := ['a' + 'b'];
+}

@@ -1,0 +1,5 @@
+MAIN {
+    std::print.stdout["start" \n];
+    var 'n' := [0];
+    loop { 'n' = ['n' + 1]; }
+}

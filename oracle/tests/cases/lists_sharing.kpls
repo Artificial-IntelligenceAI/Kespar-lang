@@ -1,0 +1,24 @@
+// §2/§6.5: a list is a reference; std::fill of a list shares one list; std::len; index any integer type
+MAIN {
+    var 'a' := [1, 2, 3];
+    var 'b' := ['a'];
+    'b'[0] = [10];
+    std::print.stdout['a' " " 'b' \n];
+    var 'row' := [0, 0];
+    var 'grid' := [std::fill['row', 2]];
+    'grid'[1][1] = [5];
+    std::print.stdout['grid' " " 'row' \n];
+    var.list.list.int8 'g2' = [[1,], [2,]];
+    loop.for 'inner' in ['g2'] { 'inner'[0] = ['inner'[0] x 2]; }
+    std::print.stdout['g2' " " std::len['g2'] " " std::len["héllo"] " " std::len[std::fill[true, 4]] \n];
+    var.uint8 'i' = [2];
+    var.int64 'j' = [0];
+    std::print.stdout['a'['i'] 'a'['j'] 'a'[1] \n];
+    var.list.int32 'typed' = [std::fill[7, 3]];
+    var.int32 'n' = [std::len['typed']];
+    'typed'['n' - 1] = ['typed'[0] + 'n'];
+    std::print.stdout['typed' \n];
+    var.list.str.utf8 'words' = ["a", "b"];
+    var.str.utf8 'w' = ['words'[1]];
+    std::print.stdout['w' \n];
+}

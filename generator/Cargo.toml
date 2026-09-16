@@ -1,0 +1,13 @@
+[package]
+name = "generator"
+version = "0.1.0"
+edition = "2021"
+description = "Writes Kespar programs and asks every engine whether they agree"
+
+[dependencies]
+kespar = { path = "../kespar" }
+oracle = { path = "../oracle" }
+
+[profile.release]
+opt-level = 3
+debug = 1

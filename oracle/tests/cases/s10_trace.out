@@ -1,0 +1,7 @@
+sum = 333833500, odd = 500
+site 3 overflow clean
+site 11 overflow clean
+site 12 division by zero clean
+site 12 overflow clean
+site 12 overflow clean
+name 'odd' min 0 max 500

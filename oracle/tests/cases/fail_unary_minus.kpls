@@ -1,0 +1,4 @@
+MAIN {
+    var.uint16 'u' = [1];
+    var 'n' := [-'u'];
+}

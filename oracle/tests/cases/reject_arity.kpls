@@ -1,0 +1,6 @@
+func.int32 add [var.int32 'a', var.int32 'b'] {
+    return ['a' + 'b'];
+}
+MAIN {
+    var 'x' := [add[1]];
+}

@@ -1,0 +1,12 @@
+// §6.6: std::to rules
+MAIN {
+    var.int32 'i' = [-7];
+    var.bin32 'f' = [0.1];
+    var.bool 'b' = [true];
+    var.uint64 'big' = [18_446_744_073_709_551_615];
+    std::print.stdout[std::to.int64['i'] " " std::to.uint8[std::to.int32[200]] " " std::to.bin64['i'] " " std::to.bin64['big'] \n];
+    std::print.stdout[std::to.int32[-2.9] " " std::to.int32[2.9] " " std::to.bin64['f'] " " std::to.bin32[0.1] \n];
+    std::print.stdout[std::to.str.utf8['i'] std::to.str.utf8['f'] std::to.str.utf8['b'] std::to.str.utf8["s"] " " std::to.int32['i'] " " std::to.bool['b'] \n];
+    var 's' := [std::to.str.utf8['f']];
+    std::print.stdout['s' \n];
+}

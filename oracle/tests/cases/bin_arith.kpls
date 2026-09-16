@@ -1,0 +1,19 @@
+// §6.4: bin32 ops in binary32, powf, division by zero gives inf/NaN, IEEE comparisons, no check sites
+MAIN {
+    var.bin32 'a' = [16777216.0];
+    var.bin32 'b' = ['a' + 1.0];
+    var.bin64 'c' = [16777216.0];
+    var.bin64 'd' = ['c' + 1.0];
+    std::print.stdout['b' " " 'd' \n];
+    var.bin64 'zero' = [0.0];
+    var.bin64 'nan' = ['zero' / 'zero'];
+    std::print.stdout[(1.0 / 'zero') " " (-1.0 / 'zero') " " 'nan' " " (2.0 xx 0.5) " " (2.0 xx (-1.0)) \n];
+    if ['nan' == 'nan'] { std::print.stdout["eq"]; } else { std::print.stdout["ne"]; }
+    if ['nan' !== 'nan'] { std::print.stdout[" neq"]; }
+    if ['nan' < 1.0 or 'nan' > 1.0 or 'nan' <== 1.0 or 'nan' >== 1.0] { std::print.stdout[" ordered"]; } else { std::print.stdout[" unordered"]; }
+    std::print.stdout[\n];
+    var 'free' := [0.1];
+    var 'g' := ['free' x 3.0];
+    std::print.stdout['g' \n];
+    std::printu.stdout['g' \n];
+}

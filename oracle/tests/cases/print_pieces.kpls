@@ -1,0 +1,15 @@
+// §5/§6.1: pieces join with nothing between them; lists render [a, b]; nested lists; empty list
+MAIN {
+    var 'n' := [7];
+    var 'xs' := [1, 2, 3];
+    var 'one' := [1,];
+    var 'grid' := [[1, 2], [3, 4]];
+    var 'empty' := [std::fill[0, 0]];
+    var 'bools' := [true, false];
+    var 'strs' := ["a", "b c"];
+    std::print.stdout["n=" 'n' "," 'xs' 'one' 'grid' 'empty' 'bools' 'strs' \n];
+    std::printu.stdout["n = " 'n' ", k = " 'xs'[1] \n];
+    var 's' := ['n' " and " 'xs'];
+    std::print.stdout['s' \n];
+    std::print.stdout['n' - 1 \n];
+}

@@ -1,0 +1,3 @@
+MAIN {
+    std::println.stdout["x"];
+}

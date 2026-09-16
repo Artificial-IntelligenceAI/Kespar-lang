@@ -1,0 +1,14 @@
+10 59049 2
+site 3 overflow clean
+site 11 overflow clean
+site 13 division by zero clean
+site 13 overflow clean
+site 14 out of bounds clean
+site 14 overflow clean
+site 15 overflow clean
+site 16 overflow clean
+site 17 negative exponent clean
+site 17 overflow fired
+name 'free' min 1 max 59049
+name 'never' min 0 max 0
+name 'xs' min 1 max 2

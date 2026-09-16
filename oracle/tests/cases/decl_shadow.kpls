@@ -1,0 +1,20 @@
+// §3: $:= / $= hide a visible name until the block ends
+MAIN {
+    var.int32 'x' = [1];
+    var 'y' := [10];
+    check {
+        var.int64 'x' $= [2];
+        var 'y' $:= [20];
+        std::print.stdout['x' " " 'y' \n];
+        nocheck {
+            var 'x' $:= [3];
+            std::print.stdout['x' " " 'y' \n];
+        }
+        std::print.stdout['x' \n];
+    }
+    std::print.stdout['x' " " 'y' \n];
+    var.mut 'counter' := [0];
+    'counter' = ['counter' + 1];
+    var.immut.int32 'limit' = [10];
+    std::print.stdout['counter' " " 'limit' \n];
+}

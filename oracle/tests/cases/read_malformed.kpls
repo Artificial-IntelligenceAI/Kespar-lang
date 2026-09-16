@@ -1,0 +1,3 @@
+MAIN {
+    var.int32 'n' = [std::read.stdin[]];
+}

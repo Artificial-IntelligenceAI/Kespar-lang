@@ -1,0 +1,3 @@
+MAIN {
+    var.int8 'n' = [std::read.stdin[]];
+}
