@@ -131,6 +131,7 @@ fn run(s: &Settings) {
             let dir = s.workspace.join(w.to_string());
             let _ = std::fs::create_dir_all(&dir);
             scope.spawn(move || {
+                background_priority();
                 let mut stats = Stats::default();
                 loop {
                     if stop.load(Ordering::Relaxed) {
@@ -220,9 +221,13 @@ fn precog_refusal(msg: &str) -> bool {
 fn run_case(s: &Settings, seed: u64, size: u32, dir: &Path, stats: &mut Stats, verbose: bool) -> Option<Finding> {
     let case = gen::case(seed, size);
     stats.cases += 1;
-    let _ = std::fs::create_dir_all(dir);
+    // The program is written out only when a finding needs looking at (or on replay):
+    // a file per case is thousands of files per minute for the indexer to chew on.
     let src_path = dir.join(format!("case_{seed}.kpls"));
-    let _ = std::fs::write(&src_path, &case.program);
+    if verbose {
+        let _ = std::fs::create_dir_all(dir);
+        let _ = std::fs::write(&src_path, &case.program);
+    }
     let program = case.program.clone();
     let finding = |kind: Kind| Some(Finding { seed, program: program.clone(), kind });
 
@@ -486,8 +491,7 @@ fn matching_close(lines: &[String], open: usize) -> Option<usize> {
 fn run_source(s: &Settings, program: &str, seed: u64, dir: &Path) -> Option<Finding> {
     // Reuse the seed's inputs: the reads are untouched by shrinking.
     let case = gen::case(seed, s.size);
-    let src_path = dir.join(format!("shrink_{seed}.kpls"));
-    let _ = std::fs::write(&src_path, program);
+    let _ = dir;
     let oracle = if s.oracle { Some(Oracle::compile(program)) } else { None };
     let precog = Kespar::compile(program, false);
     let allchecks = Kespar::compile(program, true);
@@ -529,4 +533,29 @@ fn run_source(s: &Settings, program: &str, seed: u64, dir: &Path) -> Option<Find
         }
     }
     None
+}
+
+/// Use every core, but as background work: the moment another app wants a
+/// core, the scheduler gives it away. macOS QoS "background" also lowers
+/// I/O priority; the plain `nice` covers other Unixes.
+fn background_priority() {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn pthread_set_qos_class_self_np(qos_class: u32, relative_priority: i32) -> i32;
+        }
+        const QOS_CLASS_BACKGROUND: u32 = 0x09;
+        unsafe {
+            pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND, 0);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        extern "C" {
+            fn setpriority(which: i32, who: u32, prio: i32) -> i32;
+        }
+        unsafe {
+            setpriority(0, 0, 19);
+        }
+    }
 }
