@@ -280,7 +280,8 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
     pub fn ask(&mut self, id: SiteId) -> Answer {
         let insts = std::mem::take(&mut self.instances[id as usize]);
         if insts.is_empty() {
-            return Answer::Proven;
+            // Layer 2 reached it, the encoding did not: a loop or call was cut before it.
+            return Answer::Unknown("not reached within the unroll budget".into());
         }
         let incomplete = insts.iter().any(|i| i.in_cut || i.loops.iter().any(|l| self.incomplete_loops.contains(l)));
         let conds: Vec<&Bool<'ctx>> = insts.iter().map(|i| &i.cond).collect();
@@ -614,11 +615,14 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
         }
         if !fully {
             self.havoc(st, body);
-            if let Some(c) = cond {
-                let cv = self.expr(st, c).boolean().clone();
-                exit = self.or(&exit, &self.and(&st.guard, &cv.not()));
-            } else {
-                exit = self.or(&exit, &st.guard);
+            // The loop may leave through its condition, or — with a `break` in the
+            // body — from any later iteration in any havocked state.
+            match cond {
+                Some(c) if !has_break(body) => {
+                    let cv = self.expr(st, c).boolean().clone();
+                    exit = self.or(&exit, &self.and(&st.guard, &cv.not()));
+                }
+                _ => exit = self.or(&exit, &st.guard),
             }
             self.incomplete_loops.push(lid);
         }
@@ -1093,4 +1097,14 @@ fn writes_heap(stmts: &[Stmt]) -> bool {
 #[allow(dead_code)]
 fn tier(s: &Site) -> Tier {
     s.tier
+}
+
+/// A `break` belonging to this loop body (not to a loop nested inside it).
+fn has_break(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|s| match &s.kind {
+        SK::Break => true,
+        SK::If(brs, el) => brs.iter().any(|(_, b)| has_break(b)) || el.as_ref().map_or(false, |b| has_break(b)),
+        SK::Block(b) => has_break(b),
+        _ => false,
+    })
 }

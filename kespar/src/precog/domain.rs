@@ -31,7 +31,7 @@ impl ISet {
         if lo > hi {
             return ISet::Empty;
         }
-        if lo != NEG_INF && hi != POS_INF && (hi - lo) < SET_CAP as i128 {
+        if lo != NEG_INF && hi != POS_INF && hi.checked_sub(lo).map_or(false, |d| d < SET_CAP as i128) {
             ISet::Set((lo..=hi).collect())
         } else {
             ISet::Range(lo, hi)
@@ -152,7 +152,7 @@ impl ISet {
     pub fn len(&self) -> Option<usize> {
         match self {
             ISet::Set(s) => Some(s.len()),
-            ISet::Range(lo, hi) if *lo != NEG_INF && *hi != POS_INF => Some((hi - lo + 1) as usize),
+            ISet::Range(lo, hi) if *lo != NEG_INF && *hi != POS_INF => hi.checked_sub(*lo).and_then(|d| d.checked_add(1)).map(|d| d as usize),
             _ => None,
         }
     }

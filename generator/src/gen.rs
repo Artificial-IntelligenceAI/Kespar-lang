@@ -631,7 +631,8 @@ impl Gen {
         let r = self.resolve(t);
         let v: i128 = match r {
             Ty::Int(w) => {
-                let (lo, hi) = (w.min().max(-1000), w.max().min(1000));
+                // `-128` is negation of 128, which does not fit int8: stay above the minimum.
+                let (lo, hi) = ((w.min() + 1).max(-1000), w.max().min(1000));
                 lo + self.rng.below((hi - lo + 1) as u64) as i128
             }
             // A free name may later be forced to any width: stay inside int8.
