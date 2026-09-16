@@ -65,8 +65,9 @@ An unproven site is asked exactly, as CyborgPL specifies: a **bit-precise
 SMT query** over the real program semantics. Kespar uses **Z3** through
 the `z3` crate (owner allowed dependencies, 2026-09-16). The query encodes
 the path to the site — the read domains, every assignment on the way,
-the branch conditions taken, loops unrolled to a bound of **32 iterations**
-(**provisional**) — as bit-vectors of the exact widths, and asks whether
+the branch conditions taken, loops unrolled to a bound of **16 iterations**
+per loop and **64 across the whole program** (**provisional**; deeper
+unrolling made Z3 quadratic on nested loops) — as bit-vectors of the exact widths, and asks whether
 any input reaches the site with an illegal value.
 
 - `unsat` → **proven**. No check.
@@ -80,7 +81,7 @@ any input reaches the site with an illegal value.
   per query, so the answer is the same on every machine.
 
 Loop unrolling to a bound means a site inside a loop may be proven for the
-first 32 iterations and unproven after; Precog reports it as unproven
+first 16 iterations and unproven after; Precog reports it as unproven
 unless layer 2's fixpoint already covered every iteration. This is where
 CyborgPL's invariant templates would go (sums, counters, indices proven
 inductively); the POC does not implement them and says so in the report.

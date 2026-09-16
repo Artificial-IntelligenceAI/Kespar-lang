@@ -634,7 +634,8 @@ impl Gen {
                 let (lo, hi) = (w.min().max(-1000), w.max().min(1000));
                 lo + self.rng.below((hi - lo + 1) as u64) as i128
             }
-            _ => self.rng.below(200) as i128 - 50,
+            // A free name may later be forced to any width: stay inside int8.
+            _ => self.rng.below(128) as i128 - if self.rng.chance(0.3) { 60 } else { 0 },
         };
         if v < 0 { format!("(-{})", -v) } else { v.to_string() }
     }
@@ -784,7 +785,13 @@ impl Gen {
                 let r = self.resolve(&t);
                 let t = match r {
                     Ty::Int(_) | Ty::Free(_) | Ty::Bin => t,
-                    Ty::Bool | Ty::Str if op == "==" || op == "!==" => t,
+                    Ty::Bool if op == "==" || op == "!==" => t,
+                    Ty::Str if op == "==" || op == "!==" => {
+                        // pieces cannot sit inside `( )`: compare simple text values
+                        let a = self.str_simple();
+                        let b = self.str_simple();
+                        return format!("({a} {op} {b})");
+                    }
                     _ => self.free(),
                 };
                 let a = self.expr_of(&t, depth - 1);
@@ -812,6 +819,15 @@ impl Gen {
                 format!("{}[{}]", f.name, args.join(", "))
             }
         }
+    }
+
+    fn str_simple(&mut self) -> String {
+        let vs = self.vars_of(|x| *x == Ty::Str);
+        if !vs.is_empty() && self.rng.chance(0.6) {
+            let v = &vs[self.rng.below(vs.len() as u64) as usize];
+            return format!("'{}'", v.name);
+        }
+        format!("\"{}\"", ["hi", "", "x y"][self.rng.below(3) as usize])
     }
 
     fn str_expr(&mut self, depth: u32) -> String {

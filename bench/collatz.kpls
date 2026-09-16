@@ -1,0 +1,22 @@
+// Collatz steps: the values grow without a bound Precog can find, so the
+// arithmetic keeps its checks — the honest case.
+MAIN {
+    var.int32 'limit' = [std::read.stdin[1, 100]];
+    var.int64 'longest' = [0];
+    loop.for 'rep' in [std::range[1, 300]] {
+        loop.for 'start' in [std::range[1, std::to.int64['limit']]] {
+            var.int64 'x' = ['start'];
+            var.int64 'steps' = [0];
+            loop.while ['x' !== 1] {
+                if [('x' mod 2) == 0] {
+                    'x' = ['x' / 2];
+                } else {
+                    'x' = [(3 x 'x') + 1];
+                }
+                'steps' = ['steps' + 1];
+            }
+            if ['steps' > 'longest'] { 'longest' = ['steps']; }
+        }
+    }
+    std::printu.stdout['longest' \n];
+}

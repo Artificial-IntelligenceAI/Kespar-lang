@@ -1,0 +1,16 @@
+// The same, with n known: nothing is left to run.
+
+func.int64 square [var.int64 'x'] {
+    return ['x' x 'x'];
+}
+MAIN {
+    var.int32 'n' = [1000];      // known: Precog runs the whole thing at compile time
+    var.int64 'total' = [0];
+    loop.for 'rep' in [std::range[1, 5000]] {
+        'total' = [0];
+        loop.for 'i' in [std::range[1, std::to.int64['n']]] {
+            'total' = ['total' + square['i']];
+        }
+    }
+    std::printu.stdout['total' \n];
+}

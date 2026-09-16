@@ -102,6 +102,8 @@ pub struct Analysis<'a> {
     cur_func: FuncId,
     /// Which function each expression belongs to.
     pub expr_func: HashMap<u32, FuncId>,
+    /// Above zero while peeking: nothing is recorded.
+    quiet: u32,
 }
 
 fn top_of(ty: &Ty) -> AVal {
@@ -139,7 +141,7 @@ pub fn pure(e: &Expr) -> bool {
 impl<'a> Analysis<'a> {
     pub fn new(prog: &'a Program, budget: u64) -> Self {
         let sites = prog.sites.iter().map(|_| SiteState { reached: false, proven: true, certain: false, note: String::new(), seen: ISet::Empty }).collect();
-        let mut a = Analysis { prog, alloc: HashMap::new(), sites, results: HashMap::new(), frees: vec![ISet::Empty; prog.free_names.len()], steps: 0, budget, depth: 0, incomplete: vec![false; prog.funcs.len()], loop_line: 0, exhausted: None, cur_func: prog.main, expr_func: HashMap::new() };
+        let mut a = Analysis { prog, alloc: HashMap::new(), sites, results: HashMap::new(), frees: vec![ISet::Empty; prog.free_names.len()], steps: 0, budget, depth: 0, incomplete: vec![false; prog.funcs.len()], loop_line: 0, exhausted: None, cur_func: prog.main, expr_func: HashMap::new(), quiet: 0 };
         for (i, f) in prog.funcs.iter().enumerate() {
             let mut ids = Vec::new();
             collect_exprs(&f.body, &mut ids);
@@ -173,6 +175,9 @@ impl<'a> Analysis<'a> {
     }
 
     fn site(&mut self, id: SiteId, proven: bool, certain: bool, note: String) {
+        if self.quiet > 0 {
+            return;
+        }
         let s = &mut self.sites[id as usize];
         s.reached = true;
         if !proven {
@@ -189,6 +194,9 @@ impl<'a> Analysis<'a> {
     }
 
     fn note_free(&mut self, ty: &Ty, v: &AVal) {
+        if self.quiet > 0 {
+            return;
+        }
         if let (Ty::Int(IntTy::Free(id)), AVal::Int(s)) = (ty, v) {
             let id = *id as usize;
             self.frees[id] = self.frees[id].join(s);
@@ -196,6 +204,9 @@ impl<'a> Analysis<'a> {
     }
 
     fn record(&mut self, e: &Expr, v: &AVal) {
+        if self.quiet > 0 {
+            return;
+        }
         self.note_free(&e.ty, v);
         if !matches!(v, AVal::List(_) | AVal::Nothing | AVal::Undef) && pure(e) {
             let joined = match self.results.get(&e.id) {
@@ -570,6 +581,7 @@ impl<'a> Analysis<'a> {
             exit = Some(entry.clone());
         }
         let trips_bounded = aset.bounded() && bset.bounded() && (bset.hi() - aset.lo()) < UNROLL_CAP as i128;
+        let body_reads = reads_var(body, var);
         if trips_bounded {
             let mut st = entry;
             let mut k: i128 = 0;
@@ -599,6 +611,16 @@ impl<'a> Analysis<'a> {
                 let ends = aset.binop(BinOp::Add, &ISet::one(k)).narrow(BinOp::Eq, &bset, true);
                 if !ends.is_empty() {
                     exit = join_opt(exit, Some(next.clone()));
+                }
+                // A trip that changed nothing, in a body that never looks at the
+                // counter: every later trip is the same one.
+                let mut same = next.clone();
+                same.vars[var as usize] = st.vars[var as usize].clone();
+                if same == st && !body_reads {
+                    if aset.hi() <= bset.hi() {
+                        exit = join_opt(exit, Some(next.clone()));
+                    }
+                    break;
                 }
                 st = next;
                 k += 1;
@@ -729,6 +751,12 @@ impl<'a> Analysis<'a> {
                 if len.contains(k) {
                     exit = join_opt(exit, Some(next.clone()));
                 }
+                let mut same = next.clone();
+                same.vars[var as usize] = st.vars[var as usize].clone();
+                if same == st {
+                    exit = join_opt(exit, Some(next.clone()));
+                    break;
+                }
                 st = next;
                 k += 1;
             }
@@ -835,15 +863,11 @@ impl<'a> Analysis<'a> {
         if !pure(e) {
             return None;
         }
-        let saved_results = self.results.clone();
-        let saved_sites = self.sites.clone();
-        let saved_frees = self.frees.clone();
         let saved_steps = self.steps;
         let mut tmp = s.clone();
+        self.quiet += 1;
         let v = self.eval(&mut tmp, e);
-        self.results = saved_results;
-        self.sites = saved_sites;
-        self.frees = saved_frees;
+        self.quiet -= 1;
         self.steps = saved_steps;
         match v {
             AVal::Int(i) => Some(i),
@@ -878,11 +902,13 @@ impl<'a> Analysis<'a> {
         }
         let within = r.within(w.min(), w.max());
         let certain = r.disjoint(w.min(), w.max()) && !r.is_empty();
-        self.sites[site as usize].seen = self.sites[site as usize].seen.join(&r);
+        if self.quiet == 0 {
+            self.sites[site as usize].seen = self.sites[site as usize].seen.join(&r);
+        }
         let seen = self.sites[site as usize].seen.clone();
         let note = if within { format!("result within {}", seen.describe()) } else { format!("result {} reaches past {}", seen.describe(), w.name()) };
         self.site(site, within, certain, note);
-        if within {
+        if within && self.quiet == 0 {
             self.sites[site as usize].note = format!("result within {}", seen.describe());
         }
         if within {
@@ -1386,4 +1412,29 @@ fn collect_exprs(stmts: &[Stmt], out: &mut Vec<u32>) {
             _ => {}
         }
     }
+}
+
+/// Does any expression in `stmts` mention local `v`?
+fn reads_var(stmts: &[Stmt], v: VarId) -> bool {
+    fn expr(e: &Expr, v: VarId) -> bool {
+        match &e.kind {
+            EK::Var(x) => *x == v,
+            EK::Call(_, args) | EK::List(args) => args.iter().any(|a| expr(a, v)),
+            EK::Pieces(ps) => ps.iter().any(|p| match p { PieceIr::Var(x, _) => *x == v, PieceIr::Value(e) => expr(e, v), _ => false }),
+            EK::Neg(x, _) | EK::Not(x) | EK::Len(x) | EK::To(x, _) => expr(x, v),
+            EK::Binary(_, a, b, ..) | EK::Index(a, b, _) | EK::Fill(a, b, _) => expr(a, v) || expr(b, v),
+            _ => false,
+        }
+    }
+    stmts.iter().any(|s| match &s.kind {
+        SK::Let(_, e) | SK::Assign(_, e) | SK::Exit(e) | SK::CallStmt(e) | SK::Return(Some(e)) => expr(e, v),
+        SK::AssignIndex(t, i, val, _) => expr(t, v) || expr(i, v) || expr(val, v),
+        SK::Print { pieces, .. } => pieces.iter().any(|p| expr(p, v)),
+        SK::If(brs, el) => brs.iter().any(|(c, b)| expr(c, v) || reads_var(b, v)) || el.as_ref().map_or(false, |b| reads_var(b, v)),
+        SK::Block(b) | SK::Loop(b) => reads_var(b, v),
+        SK::While(c, b) => expr(c, v) || reads_var(b, v),
+        SK::ForRange { a, b, body, .. } => expr(a, v) || expr(b, v) || reads_var(body, v),
+        SK::ForList { list, body, .. } => expr(list, v) || reads_var(body, v),
+        _ => false,
+    })
 }

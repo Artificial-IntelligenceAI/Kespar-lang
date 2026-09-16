@@ -23,8 +23,8 @@ and reads with and without bounds.
 A **case** is one program plus a set of **input line-sets** for it: several
 random line-sets within the declared bounds, every edge line-set (bound
 ends, 0, ±1, type min/max, empty and maximum-length lists and strs), and
-— when the read domains multiply to at most 2^24 (**provisional**) — the
-whole domain, enumerated.
+— when the scalar read domains multiply to at most 4096 (**provisional**,
+`--exhaust N` raises it) — the whole domain, enumerated.
 
 Programs are grown to a **size** knob (statements, nesting depth, function
 count) so a run can start small and widen. Everything comes from one

@@ -17,13 +17,16 @@ use crate::ir::*;
 use crate::types::{IntTy, Ty};
 
 /// Loop iterations encoded before the rest is havocked (provisional).
-pub const UNROLL: u32 = 32;
+pub const UNROLL: u32 = 16;
 /// Inlined call depth (provisional).
 pub const DEPTH: u32 = 8;
 /// Loop iterations encoded in the whole program before every remaining loop is havocked (provisional).
-pub const TOTAL_UNROLL: u32 = 160;
+pub const TOTAL_UNROLL: u32 = 64;
 /// Z3 resource limit per query — a step count, never a clock (provisional).
-pub const RLIMIT: u32 = 10_000_000;
+pub const RLIMIT: u32 = 2_000_000;
+/// A smaller limit for the "can this loop go on?" checks that pace unrolling;
+/// giving up there only means unrolling one more time (provisional).
+pub const FEASIBLE_RLIMIT: u32 = 20_000;
 /// Bits used for a free name: enough that nothing Precog accepted can wrap.
 const FREE_BITS: u32 = 128;
 
@@ -272,55 +275,68 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
         self.ret.pop();
     }
 
-    /// Ask about one site: every instance must be unsatisfiable.
+    /// Ask about one site: no instance may be satisfiable. One query covers
+    /// them all (their disjunction); a model then says which instance fired.
     pub fn ask(&mut self, id: SiteId) -> Answer {
         let insts = std::mem::take(&mut self.instances[id as usize]);
         if insts.is_empty() {
             return Answer::Proven;
         }
-        let mut incomplete = false;
-        for inst in &insts {
-            if inst.in_cut || inst.loops.iter().any(|l| self.incomplete_loops.contains(l)) {
-                incomplete = true;
-            }
-            self.solver.push();
-            self.solver.assert(&inst.cond);
-            self.queries += 1;
-            let r = self.solver.check();
-            if std::env::var("KESPAR_SMT_DEBUG").is_ok() {
-                eprintln!("--- site {id} query ({r:?}):\n{}", self.solver);
-            }
-            let ans = match r {
-                SatResult::Unsat => None,
-                SatResult::Sat => {
-                    let model = self.solver.get_model();
-                    let mut parts = Vec::new();
-                    if let Some(m) = model {
-                        for rv in &self.reads {
-                            let shown = match &rv.ast {
-                                SVal::Int(b) => m.eval(b, true).and_then(|v| if rv.signed { v.as_i64().map(|x| x.to_string()) } else { v.as_u64().map(|x| x.to_string()) }),
-                                SVal::Bool(b) => m.eval(b, true).and_then(|v| v.as_bool().map(|x| x.to_string())),
-                                SVal::Str(b) | SVal::List(b) => m.eval(b, true).and_then(|v| v.as_u64().map(|x| format!("(length {x})"))),
-                                _ => None,
-                            };
-                            if let Some(s) = shown {
-                                parts.push(format!("'{}'={}", rv.name, s));
-                            }
+        let incomplete = insts.iter().any(|i| i.in_cut || i.loops.iter().any(|l| self.incomplete_loops.contains(l)));
+        let conds: Vec<&Bool<'ctx>> = insts.iter().map(|i| &i.cond).collect();
+        let any = Bool::or(self.ctx, &conds);
+        self.solver.push();
+        self.solver.assert(&any);
+        self.queries += 1;
+        let r = self.solver.check();
+        if std::env::var("KESPAR_SMT_DEBUG").is_ok() {
+            eprintln!("--- site {id} query ({r:?}):\n{}", self.solver);
+        }
+        let ans = match r {
+            SatResult::Unsat => None,
+            SatResult::Sat => {
+                let model = self.solver.get_model();
+                let mut parts = Vec::new();
+                let mut exact = true;
+                if let Some(m) = model {
+                    // Which instance did the model satisfy?
+                    for inst in &insts {
+                        if m.eval(&inst.cond, true).and_then(|b| b.as_bool()) == Some(true) {
+                            exact = !inst.after_havoc && !inst.in_cut && !inst.loops.iter().any(|l| self.incomplete_loops.contains(l));
+                            break;
                         }
                     }
-                    let cx = if parts.is_empty() { "some input".into() } else { parts.join(", ") };
-                    let exact = !inst.after_havoc && !inst.in_cut && !inst.loops.iter().any(|l| self.incomplete_loops.contains(l));
-                    Some(if exact { Answer::Fails(cx) } else { Answer::MayFail(cx) })
+                    for rv in &self.reads {
+                        let shown = match &rv.ast {
+                            SVal::Int(b) => m.eval(b, true).and_then(|v| v.as_u64()).map(|u| {
+                                let bits = b.get_size();
+                                if rv.signed && bits < 64 && (u >> (bits - 1)) & 1 == 1 {
+                                    (u as i128 - (1i128 << bits)).to_string()
+                                } else if rv.signed && bits == 64 {
+                                    (u as i64).to_string()
+                                } else {
+                                    u.to_string()
+                                }
+                            }),
+                            SVal::Bool(b) => m.eval(b, true).and_then(|v| v.as_bool().map(|x| x.to_string())),
+                            SVal::Str(b) | SVal::List(b) => m.eval(b, true).and_then(|v| v.as_u64().map(|x| format!("(length {x})"))),
+                            _ => None,
+                        };
+                        if let Some(s) = shown {
+                            parts.push(format!("'{}'={}", rv.name, s));
+                        }
+                    }
                 }
-                SatResult::Unknown => Some(Answer::Unknown("solver gave up".into())),
-            };
-            self.solver.pop(1);
-            if let Some(a) = ans {
-                self.instances[id as usize] = insts;
-                return a;
+                let cx = if parts.is_empty() { "some input".into() } else { parts.join(", ") };
+                Some(if exact { Answer::Fails(cx) } else { Answer::MayFail(cx) })
             }
-        }
+            SatResult::Unknown => Some(Answer::Unknown("solver gave up".into())),
+        };
+        self.solver.pop(1);
         self.instances[id as usize] = insts;
+        if let Some(a) = ans {
+            return a;
+        }
         if incomplete {
             Answer::Unknown(format!("proven for the first {UNROLL} iterations only"))
         } else {
@@ -382,6 +398,8 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
                 for (cond, body) in branches {
                     st.guard = fall.clone();
                     let c = self.expr(st, cond).boolean().clone();
+                    // A check inside the condition that failed stops the program: carry that.
+                    fall = st.guard.clone();
                     let before = st.clone();
                     let here = self.and(&fall, &c);
                     st.guard = here.clone();
@@ -551,11 +569,17 @@ impl<'ctx, 'a> Smt<'ctx, 'a> {
     }
 
     fn feasible(&mut self, g: &Bool<'ctx>) -> bool {
+        let mut p = Params::new(self.ctx);
+        p.set_u32("rlimit", FEASIBLE_RLIMIT);
+        self.solver.set_params(&p);
         self.solver.push();
         self.solver.assert(g);
         self.queries += 1;
         let r = self.solver.check();
         self.solver.pop(1);
+        let mut p = Params::new(self.ctx);
+        p.set_u32("rlimit", RLIMIT);
+        self.solver.set_params(&p);
         r != SatResult::Unsat
     }
 

@@ -1,0 +1,16 @@
+// Sum of squares up to n, repeated: every check inside the loops is proven
+// from the read's bound, so the shipped loop does plain arithmetic.
+func.int64 square [var.int64 'x'] {
+    return ['x' x 'x'];
+}
+MAIN {
+    var.int32 'n' = [std::read.stdin[0, 1000]];
+    var.int64 'total' = [0];
+    loop.for 'rep' in [std::range[1, 5000]] {
+        'total' = [0];
+        loop.for 'i' in [std::range[1, std::to.int64['n']]] {
+            'total' = ['total' + square['i']];
+        }
+    }
+    std::printu.stdout['total' \n];
+}

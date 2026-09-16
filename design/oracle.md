@@ -55,8 +55,8 @@ directly:
    fires, or any free name holds a value outside its chosen width, Precog's
    proof was wrong — a finding of the highest severity, kept separate from
    ordinary disagreements.
-4. When a site's domain is small enough (the product of input domains ≤
-   **2^24**, **provisional**), the oracle enumerates it **exhaustively**
+4. When a site's domain is small enough (the product of the scalar read
+   domains ≤ **4096**, **provisional**; a flag raises it), the oracle enumerates it **exhaustively**
    across every core instead of sampling. Then "no input trips it" is a
    fact, not a probability — and for those programs the solver's `unsat`
    has been checked against the ground truth.

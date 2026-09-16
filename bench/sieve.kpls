@@ -1,0 +1,21 @@
+// A sieve over a list: every index is proven within the list's length.
+MAIN {
+    var.int32 'n' = [std::read.stdin[2, 20000]];
+    var 'flags' := [std::fill[true, 20001]];
+    var 'count' := [0];
+    loop.for 'rep' in [std::range[1, 30]] {
+    'count' = [0];
+    'flags' = [std::fill[true, 20001]];
+    loop.for 'i' in [std::range[2, 'n']] {
+        if ['flags'['i']] {
+            'count' = ['count' + 1];
+            var.int32 'j' = ['i' x 2];
+            loop.while ['j' <== 'n'] {
+                'flags'['j'] = [false];
+                'j' = ['j' + 'i'];
+            }
+        }
+    }
+    }
+    std::printu.stdout['count' \n];
+}
