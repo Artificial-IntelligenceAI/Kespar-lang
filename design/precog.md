@@ -50,7 +50,8 @@ possible and each branch is analysed with the condition assumed (an `if
 'n' > 5` narrows `'n'` inside). Loops iterate the analysis to a fixpoint,
 widening to intervals when a set keeps growing; a `loop` over a bounded
 range unrolls abstractly at most **64 times** (**provisional**) before
-widening. Functions are analysed per call site with the arguments' sets
+widening; counted loops are followed trip by trip up to 100,000 trips each
+and **2,000,000 across the program** (nested loops multiply), then widen. Functions are analysed per call site with the arguments' sets
 (inlined analysis, depth-limited at **8** for recursion, **provisional**),
 so `square['i']` with `'i'` in 1..1000 proves its own multiply.
 

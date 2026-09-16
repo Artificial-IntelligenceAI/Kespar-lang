@@ -1,0 +1,11 @@
+MAIN {
+    var 'y2' := [11];
+    var.str.utf8 'lo5' = ["hi"];
+    var.immut.uint32 'c6' = [1500];
+    loop.for 'count7' in [std::range[0, 'c6']] {
+        loop.for 'e8' in [std::range[0, 'count7']] {
+            'lo5' = ["a" 'lo5' 'c6' 'y2'];
+        }
+    }
+    std::printu.stdout['lo5' " " \n];
+}

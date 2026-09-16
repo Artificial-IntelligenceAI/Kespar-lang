@@ -16,6 +16,9 @@ use super::domain::*;
 
 /// Trips a counted loop is followed one by one before widening (provisional).
 pub const UNROLL_CAP: u32 = 100_000;
+/// Trips followed one by one across the whole program; nested counted loops
+/// multiply, so beyond this every loop widens instead (provisional).
+pub const TOTAL_TRIPS: u64 = 2_000_000;
 /// Iterations of a `loop.while` followed one by one before widening (provisional).
 pub const WHILE_CAP: u32 = 64;
 /// Nested call depth before a call is cut off and its result taken as anything (provisional).
@@ -104,6 +107,7 @@ pub struct Analysis<'a> {
     pub expr_func: HashMap<u32, FuncId>,
     /// Above zero while peeking: nothing is recorded.
     quiet: u32,
+    trips_left: u64,
 }
 
 fn top_of(ty: &Ty) -> AVal {
@@ -141,7 +145,7 @@ pub fn pure(e: &Expr) -> bool {
 impl<'a> Analysis<'a> {
     pub fn new(prog: &'a Program, budget: u64) -> Self {
         let sites = prog.sites.iter().map(|_| SiteState { reached: false, proven: true, certain: false, note: String::new(), seen: ISet::Empty }).collect();
-        let mut a = Analysis { prog, alloc: HashMap::new(), sites, results: HashMap::new(), frees: vec![ISet::Empty; prog.free_names.len()], steps: 0, budget, depth: 0, incomplete: vec![false; prog.funcs.len()], loop_line: 0, exhausted: None, cur_func: prog.main, expr_func: HashMap::new(), quiet: 0 };
+        let mut a = Analysis { prog, alloc: HashMap::new(), sites, results: HashMap::new(), frees: vec![ISet::Empty; prog.free_names.len()], steps: 0, budget, depth: 0, incomplete: vec![false; prog.funcs.len()], loop_line: 0, exhausted: None, cur_func: prog.main, expr_func: HashMap::new(), quiet: 0, trips_left: TOTAL_TRIPS };
         for (i, f) in prog.funcs.iter().enumerate() {
             let mut ids = Vec::new();
             collect_exprs(&f.body, &mut ids);
@@ -580,7 +584,7 @@ impl<'a> Analysis<'a> {
         if aset.hi() > bset.lo() {
             exit = Some(entry.clone());
         }
-        let trips_bounded = aset.bounded() && bset.bounded() && (bset.hi() - aset.lo()) < UNROLL_CAP as i128;
+        let trips_bounded = aset.bounded() && bset.bounded() && (bset.hi() - aset.lo()) < UNROLL_CAP as i128 && self.trips_left > 0;
         let body_reads = reads_var(body, var);
         if trips_bounded {
             let mut st = entry;
@@ -591,9 +595,10 @@ impl<'a> Analysis<'a> {
                     return out;
                 }
                 let ik = aset.binop(BinOp::Add, &ISet::one(k)).clip(NEG_INF, bset.hi());
-                if ik.is_empty() {
+                if ik.is_empty() || self.trips_left == 0 {
                     break;
                 }
+                self.trips_left -= 1;
                 // The loop runs trip k only where a + k <= b.
                 let mut s = st.clone();
                 s.vars[var as usize] = AVal::Int(ik.clone());
@@ -625,11 +630,21 @@ impl<'a> Analysis<'a> {
                 st = next;
                 k += 1;
             }
-            out.next = exit;
-            return out;
+            if self.trips_left > 0 || k == 0 {
+                out.next = exit;
+                return out;
+            }
+            // The trip budget ran out mid-loop: the trips left are covered by widening from here.
+            let head = st;
+            let irange = ISet::Range(aset.lo(), bset.hi());
+            return self.widen_range(head, var, &var_ty, irange, body, exit, out);
         }
         // Too many trips: the counter is the whole interval and the body runs to a fixpoint.
         let irange = ISet::Range(aset.lo(), bset.hi());
+        self.widen_range(entry, var, &var_ty, irange, body, exit, out)
+    }
+
+    fn widen_range(&mut self, entry: State, var: VarId, var_ty: &Ty, irange: ISet, body: &[Stmt], mut exit: Option<State>, mut out: Out) -> Out {
         let mut head = entry;
         head.vars[var as usize] = AVal::Int(irange.clone());
         self.note_free(&var_ty, &AVal::Int(irange.clone()));

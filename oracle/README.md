@@ -14,9 +14,8 @@ oracle [--steps N] [--trace-checks] file.kpls < input
 oracle --types file.kpls
 ```
 
-- `--steps N` — a step budget: one step per statement executed, per
-  expression node evaluated, per loop iteration and per read. On
-  exhaustion: `kespar: step budget exhausted` on stderr, exit 4.
+- `--steps N` — a step budget (see "Steps" below). On exhaustion:
+  `kespar: step budget exhausted` on stderr, exit 4.
 - `--trace-checks` — after the run (whatever its outcome), one line per
   check site in source order, `site <line> <kind> fired|clean`, then one
   line per free integer name, `name '<n>' min <v> max <v>` or
@@ -28,6 +27,23 @@ Exit codes are §9's: 0, 1 (`kespar: <kind> at line N`), 2
 (`kespar: bad input for 'n' at line N`), 3 (`error: … at line N`), `n`
 for `std::exit[n]`, plus 4 for the step budget and **5** for an oracle
 limit (a free integer leaving the `i128` range — see below).
+
+## Steps
+
+A step (§8.5, oracle.md "What the oracle never does") is one statement
+executed, one expression node evaluated, one loop iteration or one read,
+**plus one step per 64 bytes of text or list built**: every time text is
+produced (pieces joined into a str, `std::to.str.utf8`, the rendered text
+of a `print`, a str read) or a list is created (a list literal,
+`std::fill`, a list read) the interpreter charges `bytes / 64` extra
+steps, where `bytes` is the text's UTF-8 length or the list's element
+count × 16. So a loop that builds a string quadratically exhausts the
+budget instead of memory. A `std::fill` is charged before its list is
+allocated. The message and exit code are the same as for any other
+exhaustion: `kespar: step budget exhausted`, exit 4. Strings are
+immutable `Rc<str>` values, rebuilt on every concatenation and dropped
+when the name is reassigned, so memory does not grow with the number of
+iterations of such a loop (`tests/cases/step_budget_text.kpls`).
 
 ## Layout
 

@@ -98,7 +98,23 @@ fn free_limit(line: usize) -> Stop {
 
 impl<'a> Interp<'a> {
     fn step(&mut self) -> R<()> {
-        self.steps += 1;
+        self.charge(1)
+    }
+
+    /// §8.5 / oracle.md: building text or a list costs one extra step per
+    /// 64 bytes, so a loop that builds a string quadratically runs out of
+    /// budget rather than memory. `bytes` is a text's UTF-8 length or a
+    /// list's element count × 16.
+    fn charge_bytes(&mut self, bytes: usize) -> R<()> {
+        self.charge((bytes / 64) as u64)
+    }
+
+    fn charge_list(&mut self, elems: usize) -> R<()> {
+        self.charge_bytes(elems.saturating_mul(16))
+    }
+
+    fn charge(&mut self, n: u64) -> R<()> {
+        self.steps = self.steps.saturating_add(n);
         if let Some(b) = self.budget {
             if self.steps > b {
                 return Err(fail(4, "kespar: step budget exhausted".to_string()));
@@ -307,6 +323,7 @@ impl<'a> Interp<'a> {
                         }
                     }
                 }
+                self.charge_bytes(text.len())?;
                 self.out.extend_from_slice(text.as_bytes());
             }
             StmtKind::Exit(e) => {
@@ -325,7 +342,14 @@ impl<'a> Interp<'a> {
             self.step()?;
             let info = self.info(value);
             match self.read(&info.rty, &info.read_bounds) {
-                Some(v) => Ok(v),
+                Some(v) => {
+                    match &v {
+                        Value::Str(s) => self.charge_bytes(s.len())?,
+                        Value::List(l) => self.charge_list(l.borrow().len())?,
+                        _ => {}
+                    }
+                    Ok(v)
+                }
                 None => Err(fail(2, format!("kespar: bad input for '{}' at line {}", name, value.line))),
             }
         } else {
@@ -510,6 +534,7 @@ impl<'a> Interp<'a> {
                 for it in items {
                     vals.push(self.eval(it)?);
                 }
+                self.charge_list(vals.len())?;
                 Value::List(Rc::new(RefCell::new(vals)))
             }
             ExprKind::Pieces(pieces) => {
@@ -523,6 +548,7 @@ impl<'a> Interp<'a> {
                         }
                     }
                 }
+                self.charge_bytes(text.len())?;
                 Value::Str(Rc::from(text.as_str()))
             }
             ExprKind::Read(_) | ExprKind::Range(_, _) => panic!("checker let a read or range through as a value"),
@@ -551,7 +577,10 @@ impl<'a> Interp<'a> {
                 if count < 0 {
                     return Err(self.fire(e, SiteKind::OutOfBounds));
                 }
-                let mut vals = Vec::with_capacity(count as usize);
+                // charged before the list exists, so a huge fill meets the budget, not memory
+                let count = usize::try_from(count).unwrap_or(usize::MAX);
+                self.charge_list(count)?;
+                let mut vals = Vec::with_capacity(count);
                 for _ in 0..count {
                     vals.push(val.clone());
                 }
@@ -687,7 +716,11 @@ impl<'a> Interp<'a> {
             (TypeSpec::Bin(BinW::B64), Value::Bin64(f)) => Value::Bin64(f),
             (TypeSpec::Bool, Value::Bool(b)) => Value::Bool(b),
             (TypeSpec::Str, Value::Str(s)) => Value::Str(s),
-            (TypeSpec::Str, v) => Value::Str(Rc::from(render_value(&v, true).as_str())),
+            (TypeSpec::Str, v) => {
+                let text = render_value(&v, true);
+                self.charge_bytes(text.len())?;
+                Value::Str(Rc::from(text.as_str()))
+            }
             (spec, v) => panic!("checker let std::to.{} through on {:?}", spec.render(), v),
         })
     }
