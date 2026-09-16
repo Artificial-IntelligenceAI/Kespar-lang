@@ -76,7 +76,10 @@ is not unsafe, but it is wrong).
 - It never uses a clock to decide anything: the reference interpreter
   takes a `--steps N` budget for generated programs that might not
   terminate, and reaching it is reported as "budget", which every engine
-  must reach alike (the VM takes the same flag for the oracle's use).
+  must reach alike (the VM takes the same flag for the oracle's use). A
+  step is a node evaluated or a statement executed **plus one per 64 bytes
+  of text or list built**, in every engine, so quadratic string building
+  hits the budget rather than the machine's memory.
 
 ## Interfaces the engines expose to it
 

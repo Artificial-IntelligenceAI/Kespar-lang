@@ -105,7 +105,7 @@ fn whole_run(prog: &Program) -> Result<Report> {
         }
         Outcome::BadInput { .. } => unreachable!("no reads"),
         Outcome::Budget => {
-            return Err(CompileError::new(prog.funcs[prog.main as usize].line, format!("compile-time execution exceeded {STEP_BUDGET} steps; the program may not finish")));
+            return Err(CompileError::new(prog.funcs[prog.main as usize].line, format!("compile-time execution exceeded {STEP_BUDGET} steps of work; the program may not finish, or builds too much")));
         }
     }
     let mut widths = Vec::new();

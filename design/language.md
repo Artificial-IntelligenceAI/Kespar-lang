@@ -448,7 +448,9 @@ Precog executes every known value at compile time. A loop or recursion
 over known values that never finishes would hang the compiler, so
 compile-time execution has a budget **counted in steps** (owner,
 2026-09-16: never wall-clock). **Provisional**: 100,000,000 steps per
-program, one per evaluated node or executed statement. On exhaustion:
+program, one per evaluated node or executed statement, **plus one per 64
+bytes of text or list built** (so a step measures work, and a loop that
+builds a string quadratically runs out of budget instead of memory). On exhaustion:
 compile error *"compile-time execution exceeded 100000000 steps in the
 loop at line 7"* (CyborgPL has not decided this; the POC refuses so the
 situation is visible). The run-time VM has **no** budget.

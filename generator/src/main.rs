@@ -142,7 +142,13 @@ fn run(s: &Settings) {
                         break;
                     }
                     let seed = s.first_seed + k;
-                    if let Some(f) = run_case(s, seed, s.size, &dir, &mut stats, false) {
+                    let started = Instant::now();
+                    let result = run_case(s, seed, s.size, &dir, &mut stats, false);
+                    let took = started.elapsed();
+                    if took.as_secs_f64() > 2.0 {
+                        eprintln!("\nslow: seed {seed} took {:.1}s", took.as_secs_f64());
+                    }
+                    if let Some(f) = result {
                         let f = if s.no_shrink { f } else { shrink(s, f, &dir) };
                         findings.lock().unwrap().push(f);
                         if !s.keep_going {
@@ -255,6 +261,12 @@ fn run_case(s: &Settings, seed: u64, size: u32, dir: &Path, stats: &mut Stats, v
         Ok(x) => x,
         Err(ans) => {
             let msg = ans.compile_error.clone().unwrap_or_default();
+            if msg.contains("exceeded") {
+                // Precog ran out of budget: the program does too much work to run
+                // anywhere; the oracle would only do the same work, slowly.
+                stats.refused += 1;
+                return None;
+            }
             if let Some(o) = &oracle {
                 let oa = o.run(inputs.first().map(|s| s.as_str()).unwrap_or(""), s.steps);
                 if msg.contains("always stops with ") {

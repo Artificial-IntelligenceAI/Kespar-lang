@@ -74,6 +74,9 @@ pub struct Vm<'a> {
     heap: Vec<Option<Object>>,
     free: Vec<u32>,
     gc_threshold: usize,
+    /// Bytes allocated since the last collection: strings and lists are collected
+    /// by size too, or a loop building big strings holds gigabytes of garbage.
+    bytes_since_gc: usize,
     pub out: Vec<u8>,
     input: Box<dyn BufRead + 'a>,
     /// Steps left, or `None` for no budget.
@@ -94,7 +97,7 @@ pub struct RunResult {
 }
 
 pub fn run(module: &Module, input: Box<dyn BufRead + '_>, budget: Option<u64>) -> RunResult {
-    let mut vm = Vm { module, stack: Vec::new(), locals: Vec::new(), frames: Vec::new(), heap: Vec::new(), free: Vec::new(), gc_threshold: 1 << 16, out: Vec::new(), input, budget, steps: 0, fired: Vec::new(), free_ranges: vec![None; module.nfrees as usize] };
+    let mut vm = Vm { module, stack: Vec::new(), locals: Vec::new(), frames: Vec::new(), heap: Vec::new(), free: Vec::new(), gc_threshold: 1 << 16, bytes_since_gc: 0, out: Vec::new(), input, budget, steps: 0, fired: Vec::new(), free_ranges: vec![None; module.nfrees as usize] };
     let outcome = vm.run_main();
     RunResult { outcome, stdout: vm.out, steps: vm.steps, fired: vm.fired, free_ranges: vm.free_ranges }
 }
@@ -131,9 +134,30 @@ impl<'a> Vm<'a> {
         }
     }
 
+    /// Building text or a list costs a step per 64 bytes, so the step budget
+    /// bounds work done and not only instructions run (provisional).
+    fn charge(&mut self, bytes: usize) -> Result<(), Outcome> {
+        let extra = (bytes / 64) as u64;
+        self.steps += extra;
+        if let Some(b) = self.budget {
+            if b < extra {
+                self.budget = Some(0);
+                return Err(Outcome::Budget);
+            }
+            self.budget = Some(b - extra);
+        }
+        Ok(())
+    }
+
     fn alloc(&mut self, o: Object) -> u32 {
-        if self.heap.len() >= self.gc_threshold && self.free.is_empty() {
+        let size = match &o {
+            Object::Str(s) => s.len(),
+            Object::List(v) => v.len() * std::mem::size_of::<Value>(),
+        };
+        self.bytes_since_gc += size;
+        if (self.heap.len() >= self.gc_threshold && self.free.is_empty()) || self.bytes_since_gc > (64 << 20) {
             self.collect();
+            self.bytes_since_gc = 0;
             if self.free.len() < self.heap.len() / 2 {
                 self.gc_threshold *= 2;
             }
@@ -434,6 +458,7 @@ impl<'a> Vm<'a> {
                     // Far past anything this VM can hold; treat as out of bounds rather than aborting.
                     return Err(self.trap(SiteKind::OutOfBounds, line, site));
                 }
+                self.charge(n as usize * std::mem::size_of::<Value>())?;
                 let i = self.alloc(Object::List(vec![v; n as usize]));
                 self.stack.push(Value::List(i));
             }
@@ -473,6 +498,7 @@ impl<'a> Vm<'a> {
                 let useful = *useful;
                 let v = self.pop();
                 let s = self.render(v, useful);
+                self.charge(s.len())?;
                 self.push_str(s);
             }
             Op::Concat(n) => {
@@ -483,6 +509,7 @@ impl<'a> Vm<'a> {
                     let Value::Str(i) = p else { unreachable!() };
                     s.push_str(self.str_of(i));
                 }
+                self.charge(s.len())?;
                 self.push_str(s);
             }
             Op::Print => {
