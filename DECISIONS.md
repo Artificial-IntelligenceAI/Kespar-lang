@@ -77,14 +77,6 @@ model; chosen as the middle ground.
 `design/` + `DECISIONS.md`, `kespar/`, `oracle/`, `generator/`,
 `examples/`, `bench/`.
 
-## Open
-
-- Every **provisional** pick in `design/language.md` and
-  `design/precog.md` (budget sizes, set-size cap, unroll depths, the
-  provisional syntax listed above).
-- Whether the build output should list every `nocheck` site (CyborgPL
-  open; Kespar's report does).
-
 ### 2026-09-19 — Kespar's syntax is frozen at CyborgPL's 2026-09-16 sketch (owner)
 
 CyborgPL redesigned its syntax around 2026-09-18 (`let`, `fn`, `struct`,
@@ -92,3 +84,11 @@ types after the name, bare conditions, `else if`, `for temp 'i' in
 range[a, b]`). Claude asked whether Kespar follows; owner: "no need to
 follow. Kespar was only a Precog POC." Kespar keeps the syntax CyborgPL
 had on 2026-09-16, as `design/language.md` describes it.
+
+## Open
+
+- Every **provisional** pick in `design/language.md` and
+  `design/precog.md` (budget sizes, set-size cap, unroll depths, the
+  provisional syntax listed above).
+- Whether the build output should list every `nocheck` site (CyborgPL
+  open; Kespar's report does).
